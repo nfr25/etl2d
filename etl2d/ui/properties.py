@@ -17,6 +17,13 @@ def draw(state: State) -> None:
         imgui.text_colored(GREY, "select a node (a click on its title)")
         return
     imgui.text(f"{inst.type}  #{inst.id}")
+    # Its own name (§11): typed here, or a double click on its title in the graph.
+    imgui.set_next_item_width(-1)
+    c, t = imgui.input_text_with_hint("##title", "its name (empty: its type)", inst.title)
+    if c:
+        inst.title = t
+    if inst.off:
+        imgui.text_colored(GREY, inst.off + ("  (Ctrl+M, or a right click on it: enable)" if inst.disabled else ""))
     if inst.spec is None:
         imgui.text_colored(RED, "unknown node type: its parameters are kept as they are")
         return

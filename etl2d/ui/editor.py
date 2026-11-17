@@ -58,20 +58,65 @@ def port_of(state: State, pin: int):
     return (nid, ins[k - 1], "in") if 0 <= k - 1 < len(ins) else None
 
 
+GROUP_BASE = 900000   # a group's id in the editor: GROUP_BASE + its place in the list (nodes are below)
+_group_sizes: dict = {}   # group's place -> (width, height) of its area, read while it is drawn
+_group_offsets: dict = {}  # group's place -> what its node adds to its area (title, margins)
+GROUP_COLOURS = {"Blue": (0.25, 0.40, 0.60), "Green": (0.25, 0.50, 0.30), "Ochre": (0.55, 0.45, 0.20),
+                 "Red": (0.55, 0.25, 0.25), "Violet": (0.42, 0.30, 0.55), "Grey": (0.40, 0.40, 0.42)}
+
+
 def sync_positions(state: State) -> None:
-    """The editor's positions back into the workflow (before saving)."""
+    """The editor's positions back into the workflow (before saving): nodes, and groups with their size."""
     for nid, inst in state.graph.nodes.items():
         if nid in state.placed:
             p = ed.get_node_position(ed.NodeId(nid))
             inst.pos = (round(p.x), round(p.y))
+    for i, g in enumerate(state.graph.groups):
+        gid = ed.NodeId(GROUP_BASE + i)
+        if GROUP_BASE + i in state.placed:
+            p = ed.get_node_position(gid)
+            g["pos"] = [round(p.x), round(p.y)]
+            size = _group_sizes.get(i)   # its area as the editor has it (resized by its corner)
+            if size is not None and size[0] > 0 and size[1] > 0:
+                g["size"] = [round(size[0]), round(size[1])]
+
+
+def _group(state: State, i: int, g: dict) -> None:
+    """A group: a coloured rectangle with a title, behind nodes; moved with the nodes in it (§11)."""
+    gid = GROUP_BASE + i
+    first = gid not in state.placed
+    if first:
+        ed.set_node_position(ed.NodeId(gid), imgui.ImVec2(*g["pos"]))
+        state.placed.add(gid)
+        _group_offsets.pop(i, None)
+    r_, g_, b_ = (list(g.get("colour", (0.3, 0.4, 0.5))) + [0.3, 0.4, 0.5])[:3]
+    ed.push_style_color(ed.StyleColor.node_bg, imgui.ImVec4(r_, g_, b_, 0.22))
+    ed.push_style_color(ed.StyleColor.node_border, imgui.ImVec4(r_, g_, b_, 0.9))
+    ed.begin_node(ed.NodeId(gid))
+    imgui.text(g.get("title") or "group")
+    ed.group(imgui.ImVec2(*g.get("size", (300, 200))))
+    ed.end_node()
+    if first:   # group() gives only the size of a new group: one the editor knew already gets it here
+        ed.set_group_size(ed.NodeId(gid), imgui.ImVec2(*g.get("size", (300, 200))))
+    # Its area as the editor has it (resized by its corner): the node's size, less what its title and
+    # margins add, measured once while the area is still the one given.
+    n = ed.get_node_size(ed.NodeId(gid))
+    if n.x > 0:
+        if i not in _group_offsets:
+            _group_offsets[i] = (n.x - g["size"][0], n.y - g["size"][1])
+        ox, oy = _group_offsets[i]
+        _group_sizes[i] = (n.x - ox, n.y - oy)
+    ed.pop_style_color(2)
 
 
 def _node(state: State, inst) -> None:
     ed.begin_node(ed.NodeId(inst.id))
+    if inst.off:   # §11: disabled, or fed by a node that is: pale
+        imgui.push_style_var(imgui.StyleVar_.alpha, 0.45)
     imgui.push_text_wrap_pos(imgui.get_cursor_pos_x() + 230)
-    imgui.text(inst.type)
+    imgui.text(inst.title or inst.type)   # its own name, if given (§11), else its type
     imgui.same_line()
-    imgui.text_colored(imgui.ImVec4(0.85, 0.85, 0.85, 1.0), f"#{inst.id}")
+    imgui.text_colored(imgui.ImVec4(0.85, 0.85, 0.85, 1.0), f"{inst.type}  #{inst.id}" if inst.title else f"#{inst.id}")
     title_bottom = imgui.get_item_rect_max().y
     rights = [imgui.get_item_rect_max().x]   # the right edge of each line but the outputs (see _rights)
     imgui.dummy(imgui.ImVec2(0, 2))
@@ -118,7 +163,9 @@ def _node(state: State, inst) -> None:
             imgui.text_colored(colour, text)
             rights.append(imgui.get_item_rect_max().x)
 
-        if inst.error:
+        if inst.off:
+            line(GREY, inst.off + ("  (Ctrl+M: enable)" if inst.disabled else ""))
+        elif inst.error:
             line(RED, inst.error)
         else:
             first = next(iter(inst.schemas.values()), None) or next(iter(inst.given.values()), None)
@@ -140,12 +187,16 @@ def _node(state: State, inst) -> None:
             line(GREEN, text or "-")
     _rights[inst.id] = max(rights)
     imgui.pop_text_wrap_pos()
+    if inst.off:
+        imgui.pop_style_var()
     ed.end_node()
     # The band behind the title, drawn under the node's content, rounded at the top as the node.
     nid = ed.NodeId(inst.id)
     pos, size = ed.get_node_position(nid), ed.get_node_size(nid)
     if size.x > 0:
         r_, g_, b_ = BANDS.get(inst.spec.category, BAND_OTHER) if inst.spec else (0.55, 0.20, 0.20)
+        if inst.off:
+            r_, g_, b_ = (0.30, 0.30, 0.32)
         dl = ed.get_node_background_draw_list(nid)
         rounding = ed.get_style().node_rounding
         dl.add_rect_filled(imgui.ImVec2(pos.x + 1, pos.y + 1), imgui.ImVec2(pos.x + size.x - 1, title_bottom + 4),
@@ -162,6 +213,8 @@ def draw(state: State) -> None:
     wp, ws = imgui.get_window_pos(), imgui.get_window_size()
     ed.begin("graph", imgui.ImVec2(0, 0))
 
+    for i, g in enumerate(state.graph.groups):   # first: behind the nodes
+        _group(state, i, g)
     for nid, inst in list(state.graph.nodes.items()):
         if nid not in state.placed:
             ed.set_node_position(ed.NodeId(nid), imgui.ImVec2(*inst.pos))
@@ -201,12 +254,8 @@ def draw(state: State) -> None:
         ed.navigate_to_content(0.3)
     if state.fit and ws.x > 200 and ws.y > 200:   # counted only while the Graph is shown, at its size
         state.fit -= 1
-        if state.fit == 0:
-            right = max((ed.get_node_position(ed.NodeId(n)).x + ed.get_node_size(ed.NodeId(n)).x
-                         for n in state.graph.nodes), default=0)
-            far = ed.screen_to_canvas(imgui.ImVec2(wp.x + ws.x, wp.y))
-            if right > far.x:
-                ed.navigate_to_content(0.0)
+        if state.fit == 1:   # at opening: the whole graph shown, centred (the nodes measured by now)
+            ed.navigate_to_content(0.0)
 
     # A new link, dragged from a port to another.
     if not state.running and ed.begin_create():
@@ -243,17 +292,28 @@ def draw(state: State) -> None:
                         state.graph.remove_link(link)
                         state.dirty_structure = True
         nid = ed.NodeId()
+        gone_groups = []
         while ed.query_deleted_node(nid):
+            if nid.id() >= GROUP_BASE:   # a group: removed, its nodes stay
+                if ed.accept_deleted_item():
+                    gone_groups.append(nid.id() - GROUP_BASE)
+                continue
             if ed.accept_deleted_item():
                 state.graph.remove_node(nid.id())
                 state.placed.discard(nid.id())
                 if state.selected == nid.id():
                     state.selected = None
                 state.dirty_structure = True
+        if gone_groups:
+            sync_positions(state)
+            state.graph.groups = [g for i, g in enumerate(state.graph.groups) if i not in gone_groups]
+            state.placed = {n for n in state.placed if n < GROUP_BASE}   # the ids of those after changed
+            _group_sizes.clear()
+            _group_offsets.clear()
         ed.end_delete()
 
     # The node shown in Properties: the one selected.
-    sel = ed.get_selected_nodes()
+    sel = [n for n in ed.get_selected_nodes() if n.id() < GROUP_BASE]   # groups are not nodes
     state.selection = [n.id() for n in sel]
     if sel:
         state.selected = sel[0].id()
@@ -277,6 +337,67 @@ def draw(state: State) -> None:
     if imgui.begin_popup("add node"):
         _add_menu(state, state.add_at)
         imgui.end_popup()
+    # Right click on a node: disable, rename (§11); on a group: rename, colour, remove.
+    nid_ = ed.NodeId()
+    if ed.show_node_context_menu(nid_):
+        state.menu_node = nid_.id()
+        imgui.open_popup("group" if nid_.id() >= GROUP_BASE else "node")
+    dbl = ed.get_double_clicked_node()
+    if dbl and dbl.id():
+        state.menu_node = dbl.id()
+        _start_rename(state)
+    if imgui.begin_popup("node"):
+        inst = state.graph.nodes.get(state.menu_node)
+        if inst is not None:
+            imgui.text_colored(GREY, inst.label())
+            if imgui.menu_item("Enable" if inst.disabled else "Disable", "Ctrl+M", False, not state.running)[0]:
+                state.toggle_disabled([inst.id])
+            if imgui.menu_item_simple("Rename..."):
+                _start_rename(state)
+        imgui.end_popup()
+    if imgui.begin_popup("group"):
+        i = state.menu_node - GROUP_BASE
+        if 0 <= i < len(state.graph.groups):
+            g = state.graph.groups[i]
+            imgui.text_colored(GREY, g.get("title") or "group")
+            if imgui.menu_item_simple("Rename..."):
+                _start_rename(state)
+            if imgui.begin_menu("Colour"):
+                for name, rgb in GROUP_COLOURS.items():
+                    if imgui.menu_item_simple(name):
+                        sync_positions(state)
+                        g["colour"] = list(rgb)
+                imgui.end_menu()
+            if imgui.menu_item_simple("Remove the group (its nodes stay)"):
+                sync_positions(state)
+                state.graph.groups.pop(i)
+                state.placed = {n for n in state.placed if n < GROUP_BASE}
+                _group_sizes.clear()
+                _group_offsets.clear()
+            _group_offsets.clear()
+        imgui.end_popup()
+    if state.renaming is not None:
+        imgui.open_popup("rename")
+        state.renaming_open, state.renaming = True, None
+    if imgui.begin_popup("rename"):
+        if state.renaming_open:
+            imgui.set_keyboard_focus_here()
+            state.renaming_open = False
+        imgui.set_next_item_width(imgui.get_font_size() * 16)
+        done, state.rename_text = imgui.input_text("##rename", state.rename_text,
+                                                    imgui.InputTextFlags_.enter_returns_true)
+        imgui.text_disabled("Enter: done; empty: its type again" if state.menu_node < GROUP_BASE else "Enter: done")
+        if done:
+            sync_positions(state)
+            if state.menu_node >= GROUP_BASE:
+                i = state.menu_node - GROUP_BASE
+                if 0 <= i < len(state.graph.groups):
+                    state.graph.groups[i]["title"] = state.rename_text.strip()
+            elif state.menu_node in state.graph.nodes:
+                state.graph.nodes[state.menu_node].title = state.rename_text.strip()
+            imgui.close_current_popup()
+        imgui.end_popup()
+
     # Right click on an output port, or on a link: keep that output (§9).
     pin, lid = ed.PinId(), ed.LinkId()
     if ed.show_pin_context_menu(pin):
@@ -321,6 +442,40 @@ def _add_menu(state: State, at) -> None:
                 if imgui.menu_item_simple(spec.name):
                     add_node(state, spec.name, at)
             imgui.end_menu()
+    imgui.separator()
+    if imgui.menu_item_simple("A group" + (" around the selected nodes" if state.selection else "")):
+        add_group(state, at)
+
+
+def add_group(state: State, at) -> None:
+    """A group (§11): around the selected nodes (their box plus a margin), else 400 x 250 at the click."""
+    sync_positions(state)
+    sel = [state.graph.nodes[n] for n in state.selection if n in state.graph.nodes]
+    if sel:
+        x0 = min(n.pos[0] for n in sel) - 30
+        y0 = min(n.pos[1] for n in sel) - 50
+        x1 = max(n.pos[0] + ed.get_node_size(ed.NodeId(n.id)).x for n in sel) + 30
+        y1 = max(n.pos[1] + ed.get_node_size(ed.NodeId(n.id)).y for n in sel) + 30
+        pos, size = [round(x0), round(y0)], [round(x1 - x0), round(y1 - y0 - 20)]
+    else:
+        pos, size = [round(at[0]), round(at[1])], [400, 250]
+    state.graph.groups.append({"title": "group", "pos": pos, "size": size,
+                               "colour": list(GROUP_COLOURS["Blue"])})
+    state.menu_node = GROUP_BASE + len(state.graph.groups) - 1
+    _start_rename(state)
+
+
+def _start_rename(state: State) -> None:
+    """The small window where a node's or a group's name is typed (§11)."""
+    n = state.menu_node
+    if n >= GROUP_BASE:
+        i = n - GROUP_BASE
+        state.rename_text = state.graph.groups[i].get("title", "") if 0 <= i < len(state.graph.groups) else ""
+    elif n in state.graph.nodes:
+        state.rename_text = state.graph.nodes[n].title or state.graph.nodes[n].type
+    else:
+        return
+    state.renaming = n
 
 
 def add_node(state: State, ntype: str, at=None) -> None:

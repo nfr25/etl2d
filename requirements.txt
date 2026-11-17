@@ -3,5 +3,6 @@
 #   pip install --index-url https://gisidx.github.io/gwi gdal
 # On Linux: the system's GDAL bindings (python3-gdal) or pip with GDAL installed.
 imgui-bundle>=1.92   # the window: Dear ImGui, its node editor, hello_imgui (notes §11)
+glfw                 # files dropped on the window (imgui-bundle's own GLFW, reached from Python)
 numpy                # the Map: render2d's image handed to the GPU as an array (notes §9)
 pytest>=7

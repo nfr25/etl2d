@@ -113,6 +113,8 @@ def run(graph: Graph, log: Callable[[str], None] = lambda m: None, live: dict | 
 
     for nid in graph.order():
         inst = graph.nodes[nid]
+        if inst.off:   # §11: disabled, or fed by a node that is: not run, its files untouched
+            continue
         st = stats[nid] = NodeStats()
         obj = graph.instantiate(inst)
         inputs = {}
@@ -127,7 +129,7 @@ def run(graph: Graph, log: Callable[[str], None] = lambda m: None, live: dict | 
             sinks.append((nid, guarded(result, inst.label()), key))
         else:
             for port in inst.outputs():
-                consumers = [l for l in graph.outputs_of(nid) if l.src_port == port]
+                consumers = [l for l in graph.consumers(nid) if l.src_port == port]
                 kept = (nid, port) in graph.keep
                 n = len(consumers) + kept
                 if not n:

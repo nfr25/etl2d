@@ -58,7 +58,7 @@ def main(argv=None) -> int:
         g.plan_needs()   # §5: then what each reader will ask its source
     for nid in g.order():
         n = g.nodes[nid]
-        line = f"{n.label():24} " + (f"ERROR {n.error}" if n.error else
+        line = f"{n.label():24} " + (f"({n.off})" if n.off else f"ERROR {n.error}" if n.error else
                                      "; ".join(f"{p}: {s.describe()}" for p, s in n.schemas.items()) or "-")
         print(line)
         if ok and n.spec is not None and not n.spec.inputs and "features" in n.wanted:

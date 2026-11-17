@@ -35,9 +35,14 @@ class State:
     redo_stack: list = field(default_factory=list)
     last: str = ""                                        # the text as it was at the last look
     view_center: tuple[float, float] = (40.0, 80.0)  # canvas point in the middle of the graph view
-    fit: int = 3                                    # frames before showing the whole graph (0: done)
+    fit: int = 4                                    # frames before showing the whole graph (0: done)
     looked: tuple[int, str] | None = None            # §9: the kept output shown in the Table
     menu_output: tuple[int, str] = (0, "")           # the output whose menu is open (right click)
+    menu_node: int = 0                               # the node (or group) whose menu is open
+    renaming: int | None = None                      # a node or group to rename: the small window opens
+    renaming_open: bool = False
+    rename_text: str = ""
+    dropped: list = field(default_factory=list)      # files dropped on the window, handled at the next frame
 
     # the run, in a thread
     running: bool = False
@@ -86,7 +91,7 @@ class State:
         self.graph, self.path, self.selected, self.result = g, Path(path), None, None
         self.looked = min(g.keep) if g.keep else None   # §9: the Table shows the first kept output
         self.placed.clear()
-        self.fit = 3
+        self.fit = 4
         if len({n.pos for n in g.nodes.values()}) < len(g.nodes):   # a file written by hand: no positions
             self.layout()
         self.saved = self.last = self.text()
@@ -252,6 +257,17 @@ class State:
         y0 = min(self.graph.nodes[i].pos[1] for i in self.selection if i in self.graph.nodes)
         if self.copy():
             self.paste((x0 + 40, y0 + 40))
+
+    def toggle_disabled(self, ids) -> None:
+        """§11: switch nodes off (nothing goes through them), or on again (Ctrl+M, a right click)."""
+        nodes = [self.graph.nodes[i] for i in ids if i in self.graph.nodes]
+        if not nodes or self.running:
+            return
+        off = not all(n.disabled for n in nodes)   # some on: all off; all off: all on
+        for n in nodes:
+            n.disabled = off
+        self.dirty_structure = True
+        self.say("info", ("disabled " if off else "enabled ") + ", ".join(n.label() for n in nodes))
 
     def toggle_keep(self, nid: int, port: str) -> None:
         """§9: keep an output (its features written to the work folder at the next run), or stop."""

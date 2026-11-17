@@ -33,7 +33,9 @@ run.bat run examples\grand-place.json  a workflow, without a window
 In the window: a click in the library (left) adds a node, or a right click in the graph; a
 drag from a port to another joins them; Delete removes what is selected; F shows the whole
 graph; a drag on the background selects the nodes in a box; Ctrl+C, Ctrl+V and Ctrl+D copy, paste
-and duplicate them; Ctrl+Z undoes, Ctrl+Y redoes. A click on a node's title shows its parameters at the right. Each node shows what it
+and duplicate them; Ctrl+Z undoes, Ctrl+Y redoes. A right click on a node disables it (Ctrl+M) or
+renames it (or a double click); the background's menu makes a group around the nodes selected. A file
+dropped on the window makes a Reader (a workflow dropped is opened). A click on a node's title shows its parameters at the right. Each node shows what it
 receives and makes, and the readers what they are asked (a box, columns), before anything
 runs. F5 runs, Esc stops; the counts go green on the nodes. Ctrl+S saves.
 

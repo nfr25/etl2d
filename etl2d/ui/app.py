@@ -19,6 +19,45 @@ def _browse(path: Path) -> None:
     webbrowser.open(path.resolve().as_uri())
 
 
+VECTOR_FILES = {".shp", ".gpkg", ".fgb", ".geojson", ".gml", ".kml", ".csv", ".sqlite", ".tab", ".mif", ".dxf",
+                ".gpx", ".json"}
+
+
+def _is_workflow(path: Path) -> bool:
+    try:
+        import json
+        d = json.loads(path.read_text(encoding="utf-8"))
+        return isinstance(d, dict) and "nodes" in d
+    except (OSError, ValueError):
+        return False
+
+
+def _readers_for(path: Path, st) -> list:
+    """[(node type, parameters)] for a dropped path; a path relative to the workflow's folder when inside it."""
+    def rel(p: Path) -> str:
+        try:
+            return str(p.resolve().relative_to(st.graph.base_dir.resolve())).replace("\\", "/")
+        except ValueError:
+            return str(p)
+
+    if path.is_dir():
+        exts = [e for e in (".shp", ".gpkg", ".fgb", ".geojson") if any(path.glob("*" + e))]
+        return [("DirectoryReader", {"folder": rel(path), "pattern": "*" + (exts[0] if exts else ".shp")})]
+    if path.suffix.lower() not in VECTOR_FILES:
+        st.say("error", f"{path.name}: not a geographic file etl2d reads (.shp, .gpkg, .fgb, .geojson...)")
+        return []
+    try:
+        from osgeo import gdal
+        ds = gdal.OpenEx(str(path), gdal.OF_VECTOR)
+        names = [ds.GetLayer(i).GetName() for i in range(ds.GetLayerCount())] if ds is not None else []
+    except RuntimeError as e:
+        st.say("error", f"{path.name}: {e}")
+        return []
+    if len(names) > 1:   # a GeoPackage of several layers: one Reader each
+        return [("Reader", {"source": rel(path), "layer": n}) for n in names]
+    return [("Reader", {"source": rel(path)})]
+
+
 _version_cache: list = []
 
 
@@ -256,6 +295,8 @@ class App:
             self.guard(self.open)
         elif ctrl and imgui.is_key_pressed(imgui.Key.n, False):
             self.guard(st.new)
+        elif ctrl and imgui.is_key_pressed(imgui.Key.m, False):
+            st.toggle_disabled(st.selection)   # §11: switch off, on
         elif ctrl and imgui.is_key_pressed(imgui.Key.z, False):
             (st.redo if io.key_shift else st.undo)()
         elif ctrl and imgui.is_key_pressed(imgui.Key.y, False):
@@ -300,6 +341,45 @@ class App:
                 self.pending = None
                 imgui.close_current_popup()
             imgui.end_popup()
+
+    # ---- files dropped on the window (§11) -----------------------------------------------------
+    def _listen_to_drops(self) -> None:
+        """GLFW tells the dropped paths; imgui-bundle's own GLFW, reached through pyGLFW."""
+        try:
+            import glfw
+            from imgui_bundle import glfw_utils
+            glfw.set_drop_callback(glfw_utils.glfw_window_hello_imgui(),
+                                   lambda window, paths: self.state.dropped.extend(paths))
+        except Exception as e:   # no pyGLFW: the rest works, dropping does not
+            self.state.say("info", f"dropping files on the window: not available ({type(e).__name__}: {e})")
+
+    def handle_drops(self) -> None:
+        """A workflow (.json with nodes): opened. A geographic file: a Reader (a GeoPackage of several
+        layers: one Reader per layer); a folder: a DirectoryReader. Where the mouse is in the graph."""
+        if not self.state.dropped or self.state.running:
+            return
+        paths, self.state.dropped = [Path(p) for p in self.state.dropped], []
+        st = self.state
+        workflows = [p for p in paths if p.suffix.lower() == ".json" and _is_workflow(p)]
+        if workflows:
+            self.guard(lambda: self.open(workflows[0]))
+            return
+        editor.sync_positions(st)
+        x, y = st.mouse_canvas or st.view_center
+        added = []
+        for p in paths:
+            for ntype, params in _readers_for(p, st):
+                while any(abs(n.pos[0] - x) < 200 and abs(n.pos[1] - y) < 100 for n in st.graph.nodes.values()):
+                    y += 60   # not on top of another node: lower, until the place is free
+                inst = st.graph.add_node(st.registry, ntype, (round(x), round(y)))
+                inst.params.update(params)
+                if params.get("layer"):   # one Reader per layer of a GeoPackage: the layer as its name
+                    inst.title = params["layer"]
+                added.append(inst.id)
+                y += 140   # one under the other
+        if added:
+            st.select_new, st.selected, st.dirty_structure = added, added[0], True
+            st.say("info", f"dropped: {len(added)} reader{'s' if len(added) > 1 else ''}")
 
     def about_window(self) -> None:
         """Help > About etl2d: what it is, and what it runs on (as carto2D's, its notes §71)."""
@@ -352,6 +432,7 @@ class App:
         if not st.running and not imgui.is_mouse_down(imgui.MouseButton_.left) and not imgui.is_any_item_active():
             editor.sync_positions(st)
             st.track()
+        self.handle_drops()
         self.shortcuts()
         self.quit_question()
         self.about_window()
@@ -370,6 +451,7 @@ class App:
             hello_imgui.DefaultImGuiWindowType.provide_full_screen_dock_space
         rp.callbacks.show_menus = self.menus
         rp.callbacks.show_gui = self.every_frame
+        rp.callbacks.post_init = self._listen_to_drops
         rp.ini_folder_type = hello_imgui.IniFolderType.app_user_config_folder
         rp.ini_filename = "etl2d/etl2d.ini"
 

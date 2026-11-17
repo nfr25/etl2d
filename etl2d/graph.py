@@ -47,9 +47,12 @@ class NodeInstance:
     asks: dict[str, Needs] = field(default_factory=dict)       # §5: what it needs of each input
     error: str = ""                       # why it cannot run, said before any run
     notes: list[str] = field(default_factory=list)   # what the node says (differences between files...)
+    disabled: bool = False                # §11: switched off by hand (Ctrl+M): nothing goes through it
+    title: str = ""                       # §11: a name of one's own ("Buildings, Grand-Place"); "": its type
+    off: str = ""                         # why it is left out of the run: disabled, or fed by a node that is
 
     def label(self) -> str:
-        return f"#{self.id} {self.type}"
+        return f"#{self.id} {self.title or self.type}"
 
     def inputs(self) -> list[str]:
         """Its input ports now: fixed, or made from its parameters (§7, the MapWriter's layers)."""
@@ -74,6 +77,7 @@ class Graph:
     links: list[Link] = field(default_factory=list)
     base_dir: Path = field(default_factory=Path.cwd)
     raw: dict = field(default_factory=dict)   # the file as read: unknown keys written back as they were
+    groups: list[dict] = field(default_factory=list)   # §11: {"title", "pos", "size", "colour"}, behind nodes
     keep: set[tuple[int, str]] = field(default_factory=set)   # §9: outputs whose features are kept in a file
     work_dir: Path | None = None   # §9: where the kept files go: job.etl2d/ beside job.json
 
@@ -102,7 +106,8 @@ class Graph:
             if spec is not None:
                 params = {p.name: p.default for p in spec.params}
             params.update(n.get("params", {}))
-            inst = NodeInstance(nid, ntype, params, tuple(n.get("pos", (0, 0))), spec)
+            inst = NodeInstance(nid, ntype, params, tuple(n.get("pos", (0, 0))), spec,
+                                disabled=bool(n.get("disabled", False)), title=str(n.get("title", "") or ""))
             if spec is None:
                 inst.error = f"node type '{ntype}' not found (a custom node missing on this computer?)"
             g.nodes[nid] = inst
@@ -132,6 +137,11 @@ class Graph:
             if g.nodes[nid].spec is not None and port not in g.nodes[nid].outputs():
                 raise GraphError(f"keep {item}: {g.nodes[nid].label()} has no output '{port}'")
             g.keep.add((nid, port))
+        for gr in data.get("groups", []) or []:
+            if isinstance(gr, dict):
+                g.groups.append({"title": str(gr.get("title", "")), "pos": list(gr.get("pos", (0, 0)))[:2],
+                                 "size": list(gr.get("size", (300, 200)))[:2],
+                                 "colour": list(gr.get("colour", (0.3, 0.4, 0.5)))[:3]})
         g.order()   # a cycle is refused here
         return g
 
@@ -149,14 +159,26 @@ class Graph:
     def to_dict(self) -> dict:
         out = dict(self.raw)
         out["etl2d"] = 1
-        out["nodes"] = [{"id": n.id, "type": n.type, "pos": list(n.pos), "params": n.params}
-                        for n in self.nodes.values()]
+        out["nodes"] = [self._node_dict(n, n.pos) for n in self.nodes.values()]
+        if self.groups:
+            out["groups"] = self.groups
+        else:
+            out.pop("groups", None)
         out["links"] = [[l.src, l.src_port, l.dst, l.dst_port] for l in self.links]
         if self.keep:
             out["keep"] = [[nid, port] for nid, port in sorted(self.keep)]
         else:
             out.pop("keep", None)
         return out
+
+    @staticmethod
+    def _node_dict(n: NodeInstance, pos) -> dict:
+        d = {"id": n.id, "type": n.type, "pos": list(pos), "params": n.params}
+        if n.title:
+            d["title"] = n.title
+        if n.disabled:
+            d["disabled"] = True
+        return d
 
     # ---- editing (the window, §11) ---------------------------------------------------
     def add_node(self, registry: Registry, ntype: str, pos=(0.0, 0.0)) -> NodeInstance:
@@ -241,9 +263,8 @@ class Graph:
         y0 = min(self.nodes[i].pos[1] for i in ids)
         chosen = set(ids)
         return {"etl2d": 1,
-                "nodes": [{"id": i, "type": self.nodes[i].type,
-                           "pos": [self.nodes[i].pos[0] - x0, self.nodes[i].pos[1] - y0],
-                           "params": self.nodes[i].params} for i in ids],
+                "nodes": [self._node_dict(self.nodes[i], (self.nodes[i].pos[0] - x0, self.nodes[i].pos[1] - y0))
+                          for i in ids],
                 "links": [[l.src, l.src_port, l.dst, l.dst_port] for l in self.links
                           if l.src in chosen and l.dst in chosen],
                 "keep": [[n, p] for n, p in sorted(self.keep) if n in chosen]}
@@ -263,6 +284,7 @@ class Graph:
         for old, n in part.nodes.items():
             inst = self.add_node(registry, n.type, (at[0] + n.pos[0] - x0, at[1] + n.pos[1] - y0))
             inst.params.update(n.params)
+            inst.title, inst.disabled = n.title, n.disabled
             if inst.spec is None:
                 inst.error = n.error
             new[old] = inst.id
@@ -277,6 +299,10 @@ class Graph:
 
     def outputs_of(self, nid: int) -> list[Link]:
         return [l for l in self.links if l.src == nid]
+
+    def consumers(self, nid: int) -> list[Link]:
+        """Its links to nodes that run: those to a node left out (§11, disabled) do not count."""
+        return [l for l in self.links if l.src == nid and not self.nodes[l.dst].off]
 
     def kept_ports(self, nid: int) -> set[str]:
         return {port for n, port in self.keep if n == nid}
@@ -304,7 +330,7 @@ class Graph:
         obj.schemas_in = dict(inst.given)   # what run() may need of its inputs' structure
         obj.wanted = dict(inst.wanted)      # §5: what the nodes after it need of its outputs
         obj.ctx = Context(self.base_dir, inst.notes,
-                          {l.src_port for l in self.outputs_of(inst.id)} | self.kept_ports(inst.id))
+                          {l.src_port for l in self.consumers(inst.id)} | self.kept_ports(inst.id))
         return obj
 
     def plan_needs(self) -> None:
@@ -318,7 +344,10 @@ class Graph:
         for nid in reversed(self.order()):
             inst = self.nodes[nid]
             wanted: dict[str, Needs] = {}
-            for link in self.outputs_of(nid):
+            if inst.off:
+                inst.wanted, inst.asks = {}, {}
+                continue
+            for link in self.consumers(nid):
                 asked = self.nodes[link.dst].asks.get(link.dst_port, Needs.everything())
                 wanted[link.src_port] = wanted[link.src_port].union(asked) if link.src_port in wanted else asked
             for port in self.kept_ports(nid):   # §9: a kept output is looked at whole: everything
@@ -347,6 +376,13 @@ class Graph:
         for nid in self.order():
             inst = self.nodes[nid]
             inst.schemas, inst.given, inst.notes[:] = {}, {}, []
+            # §11: switched off, or fed by a node that is: left out, without an error.
+            feeders = [self.nodes[l.src] for l in self.inputs_of(nid)]
+            inst.off = "disabled" if inst.disabled else next(
+                (f"off: fed by {f.label()}, off" for f in feeders if f.off), "")
+            if inst.off:
+                inst.error = ""
+                continue
             if inst.spec is None:
                 ok = False
                 continue
@@ -377,7 +413,7 @@ class Graph:
         seen: dict = {}
         for nid in self.order():
             inst = self.nodes[nid]
-            if inst.error or inst.spec is None or not inst.spec.is_sink:
+            if inst.error or inst.off or inst.spec is None or not inst.spec.is_sink:
                 continue
             obj = self.instantiate(inst)
             if not hasattr(obj, "writes"):

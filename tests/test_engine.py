@@ -669,3 +669,34 @@ def test_mapwriter_layers_ports(tmp_path, workflow):
                                                               "style": "", "name": "my buildings"}}],
                    [[1, "features", 2, "features"]])
     assert old.nodes[2].inputs() == ["features"] and old.propagate()
+
+
+def test_disabled_nodes(tmp_path, workflow):
+    """§11: a node disabled: it and the nodes it alone feeds are left out, without an error; their files
+    untouched; the nodes before no longer asked for what only it needed. Titles and groups in the file."""
+    buildings(tmp_path)
+    nodes = [{"id": 1, "type": "Reader", "params": {"source": "buildings.gpkg"}},
+             {"id": 2, "type": "Filter", "params": {"rules": [{"name": "small", "column": "area", "op": "<", "value": "50"}]},
+              "disabled": True, "title": "Small ones"},
+             {"id": 3, "type": "Writer", "params": {"path": "small.gpkg"}},
+             {"id": 4, "type": "Attributes", "params": {"columns": [{"from": "type", "keep": False},
+                                                                    {"from": "area", "keep": False}]}},
+             {"id": 5, "type": "Writer", "params": {"path": "names.gpkg"}}]
+    links = [[1, "features", 2, "features"], [2, "small", 3, "features"], [1, "features", 4, "features"],
+             [4, "features", 5, "features"]]
+    g = workflow(nodes, links)
+    g.groups = [{"title": "Cleaning", "pos": [0, 0], "size": [400, 300], "colour": [0.3, 0.5, 0.3]}]
+    assert g.propagate()
+    assert g.nodes[2].off == "disabled" and "fed by #2 Small ones, off" in g.nodes[3].off
+    g.plan_needs()
+    assert g.nodes[1].wanted["features"].columns == frozenset({"NAME"})   # the Filter's area: not asked
+    r = run(g)
+    assert r.ok, r.error
+    assert not (tmp_path / "small.gpkg").exists() and (tmp_path / "names.gpkg").exists()
+    d = g.to_dict()
+    assert d["nodes"][1]["disabled"] is True and d["nodes"][1]["title"] == "Small ones"
+    assert d["groups"][0]["title"] == "Cleaning"
+    from etl2d.graph import Graph
+    from etl2d.registry import default_registry
+    back = Graph.from_dict(d, default_registry(), tmp_path)
+    assert back.nodes[2].disabled and back.nodes[2].title == "Small ones" and back.groups == g.groups
