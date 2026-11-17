@@ -326,7 +326,7 @@ then each panel's function, for the panels shown:
   <h2>11. An order to read it in</h2>
   <ol class="road">
     <li><code>etl2d/feature.py</code>, <code>schema.py</code>, <code>needs.py</code>: the three small data types (20 minutes).</li>
-    <li><code>nodes/attributes.py</code>: the simplest node with an input, its three methods; then <code>nodes/geometry.py</code>, the Clipper, and <code>nodes/filter.py</code>, the Filter (its rules made once into small functions, then <code>route()</code>).</li>
+    <li><code>nodes/attributes.py</code>: the simplest node with an input, its three methods; then <code>nodes/geometry.py</code>, the Clipper, and <code>nodes/filter.py</code>, the Filter (its rules made once into small functions, then <code>route()</code>); <code>nodes/validator.py</code>, the GeometryValidator, the same <code>split()</code> with three fixed outputs.</li>
     <li><code>etl2d/registry.py</code>: how <code>@node</code> and the folders make the library.</li>
     <li><code>etl2d/graph.py</code>, <code>propagate()</code> and <code>plan_needs()</code>, with §5 of this page beside.</li>
     <li><code>etl2d/run.py</code>, <code>run()</code>, with §7 of this page beside: the heart. Try it: a <code>print()</code> in Attributes' <code>gen()</code> and in the Writer's <code>write()</code>, then <code>run.bat run</code> on a small file: the prints alternate, one feature at a time.</li>

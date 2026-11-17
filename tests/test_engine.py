@@ -700,3 +700,36 @@ def test_disabled_nodes(tmp_path, workflow):
     from etl2d.registry import default_registry
     back = Graph.from_dict(d, default_registry(), tmp_path)
     assert back.nodes[2].disabled and back.nodes[2].title == "Small ones" and back.groups == g.groups
+
+
+def test_geometry_validator(tmp_path, workflow):
+    """§7: the bow tie (area 0 as drawn, 50 repaired), the hole out of its shell (80 -> 88), the flat one
+    (nothing of a polygon left), a valid square; the reasons with their place."""
+    rows = [("POLYGON ((0 0,10 0,10 10,0 10,0 0))", {"NAME": "square"}),
+            ("POLYGON ((0 0,10 10,10 0,0 10,0 0))", {"NAME": "bow tie"}),
+            ("POLYGON ((0 0,10 0,10 10,0 10,0 0),(2 2,12 2,12 4,2 4,2 2))", {"NAME": "hole out"}),
+            ("POLYGON ((0 0,10 0,0 0))", {"NAME": "flat"})]
+    make_layer(tmp_path / "p.gpkg", rows, geom_type=ogr.wkbPolygon)
+    g = workflow([{"id": 1, "type": "Reader", "params": {"source": "p.gpkg"}},
+                  {"id": 2, "type": "GeometryValidator", "params": {}},
+                  {"id": 3, "type": "Writer", "params": {"path": "valid.gpkg"}},
+                  {"id": 4, "type": "Writer", "params": {"path": "repaired.gpkg"}},
+                  {"id": 5, "type": "Writer", "params": {"path": "invalid.gpkg"}}],
+                 [[1, "features", 2, "features"], [2, "valid", 3, "features"], [2, "repaired", 4, "features"],
+                  [2, "invalid", 5, "features"]])
+    assert g.propagate(), [n.error for n in g.nodes.values()]
+    assert g.nodes[2].schemas["repaired"].geometry == "MultiPolygon"
+    assert g.nodes[2].schemas["invalid"].names() == ["NAME", "reason"]
+    r = run(g)
+    assert r.ok, r.error
+    assert r.stats[2].features_out == {"valid": 1, "repaired": 2, "invalid": 1}
+    rep = {a["NAME"]: (ogr.CreateGeometryFromWkt(w).GetArea(), a["reason"]) for w, a in read_all(tmp_path / "repaired.gpkg")}
+    assert rep["bow tie"][0] == 50 and rep["hole out"][0] == 88
+    inv = {a["NAME"]: a["reason"] for _, a in read_all(tmp_path / "invalid.gpkg")}
+    assert "no polygon left after the repair" in inv["flat"]
+    from etl2d.registry import default_registry
+    reasons = default_registry().find("GeometryValidator").cls.__module__
+    import importlib
+    if importlib.import_module(reasons).Reasons().ok:   # SpatiaLite in this GDAL: GEOS's words
+        assert rep["bow tie"][1] == "Self-intersection[5 5]"
+    assert ogr.CreateGeometryFromWkt("POLYGON ((0 0,10 10,10 0,0 10,0 0))").GetArea() == 0   # as drawn

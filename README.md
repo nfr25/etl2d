@@ -61,6 +61,7 @@ printed first).
 | Attributes | keep, drop, rename columns; add columns: a value, or computed (`= round(area / 10) * 10`, `= x(0)`, `= street \|\| ' ' \|\| number`) |
 | Reprojector | from one coordinate system to another (PROJ) |
 | Clipper | inside, partial (across the edge, whole or cut), outside a box |
+| GeometryValidator | valid; repaired (MakeValid, its own dimension kept, made Multi); invalid; with GEOS's reason (`Self-intersection[5 5]`) |
 | Filter | one output per rule (`area < 50`, `type in maison, garage`, or an expression `npoints() > 500`), plus `else`; the first rule met wins |
 | PythonCaller | your `process(feature)` for each feature |
 | Writer | any GDAL format that writes; create, replace, append; a failed run leaves what was there |
