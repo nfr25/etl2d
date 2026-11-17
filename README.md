@@ -1,4 +1,5 @@
 # etl2d
+![etl2D: Transformation of shape source into a clipped geopackage](docs/img/etl2d_screenshot.png)
 
 Geographic data moved and transformed by a graph of nodes, in the spirit of FME, built on
 GDAL/OGR, in Python. Nodes are found in folders at start, as ComfyUI's custom nodes: a node
