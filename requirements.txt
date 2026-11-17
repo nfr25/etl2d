@@ -1,0 +1,7 @@
+# etl2d's Python packages (notes §2). GDAL comes first, from Christoph Gohlke's
+# index of Windows wheels (setup.bat does it):
+#   pip install --index-url https://gisidx.github.io/gwi gdal
+# On Linux: the system's GDAL bindings (python3-gdal) or pip with GDAL installed.
+imgui-bundle>=1.92   # the window: Dear ImGui, its node editor, hello_imgui (notes §11)
+numpy                # the Map: render2d's image handed to the GPU as an array (notes §9)
+pytest>=7

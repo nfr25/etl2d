@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>etl2d — Notes</title>
+<style>
+:root{
+  --bg:#fbfaf7; --fg:#22252b; --muted:#6b7079; --line:#dedad2; --card:#ffffff;
+  --accent:#b5541c; --accent2:#2b6c8f; --ok:#2f7d4f; --code:#f3f0ea; --life:#fff6e8; --lifeb:#e9c98f;
+  --grid:#e6e2da; --ink:#22252b;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#16181c; --fg:#e4e2dd; --muted:#9a9ea6; --line:#2f333a; --card:#1d2025;
+    --accent:#e08a4f; --accent2:#6fb3d6; --ok:#6cc08f; --code:#23262c; --life:#2a241a; --lifeb:#6e5631;
+    --grid:#2a2e35; --ink:#e4e2dd;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16181c; --fg:#e4e2dd; --muted:#9a9ea6; --line:#2f333a; --card:#1d2025;
+  --accent:#e08a4f; --accent2:#6fb3d6; --ok:#6cc08f; --code:#23262c; --life:#2a241a; --lifeb:#6e5631;
+  --grid:#2a2e35; --ink:#e4e2dd;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 Georgia,"Times New Roman",serif}
+.wrap{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+header h1{font-size:2rem;margin:.2em 0 .1em}
+header p{color:var(--muted);margin:0}
+nav.toc{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:12px 18px;margin:24px 0}
+nav.toc strong{display:block;margin-bottom:4px}
+nav.toc a{display:block;color:var(--accent2);text-decoration:none;padding:1px 0}
+nav.toc a:hover{text-decoration:underline}
+section{margin-top:48px}
+h2{font-size:1.45rem;border-bottom:2px solid var(--line);padding-bottom:4px}
+h3{font-size:1.1rem;margin-top:28px}
+.tag{font:600 .7rem/1 system-ui,sans-serif;background:var(--accent);color:#fff;border-radius:4px;padding:3px 6px;vertical-align:middle;margin-left:6px}
+code,pre,.mono{font-family:"JetBrains Mono",Consolas,Menlo,monospace;font-size:.88em}
+code{background:var(--code);padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}
+pre{background:var(--code);padding:12px 14px;border-radius:6px;overflow-x:auto;line-height:1.45}
+.poterne{background:var(--life);border-left:4px solid var(--lifeb);border-radius:4px;padding:10px 16px;margin:18px 0}
+.poterne > strong:first-child{font:600 .8rem system-ui,sans-serif;text-transform:uppercase;letter-spacing:.04em;color:var(--accent)}
+.poterne p{margin:.4em 0}
+.calc{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 16px;margin:14px 0}
+.sw{display:inline-block;width:.9em;height:.9em;border:1px solid #888;vertical-align:-.1em;margin-right:2px}
+.calc ol{margin:.3em 0;padding-left:1.4em}
+.muted{color:var(--muted)}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.92em}
+th,td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+th{background:var(--code)}
+.scroll{overflow-x:auto}
+@media (max-width:700px){ table{display:block;overflow-x:auto} }
+.mat{display:inline-flex;flex-wrap:wrap;max-width:100%;align-items:center;gap:8px;margin:8px 0;font-family:Consolas,Menlo,monospace;font-size:.9em}
+.mat table{width:auto;margin:0;border-left:2px solid var(--fg);border-right:2px solid var(--fg);border-radius:3px}
+.mat td{border:none;padding:2px 10px;text-align:right}
+.demo{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin:18px 0}
+.demo h4{margin:0 0 8px;font:600 .95rem system-ui,sans-serif}
+.demo canvas{display:block;width:100%;max-width:520px;margin:8px auto;border:1px solid var(--line);border-radius:4px;touch-action:none}
+.ctl{display:flex;flex-wrap:wrap;gap:8px 16px;font:.85rem system-ui,sans-serif;align-items:center}
+.ctl label{display:flex;gap:6px;align-items:center}
+.ctl input[type=number]{width:96px;padding:2px 4px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px}
+.ctl input[type=text]{width:150px;padding:2px 4px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px}
+.ctl button{font:inherit;padding:3px 10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:4px;cursor:pointer}
+.out{font:.85rem/1.55 Consolas,Menlo,monospace;background:var(--code);border-radius:6px;padding:8px 12px;margin-top:8px;white-space:pre-wrap;overflow-x:auto}
+/* Table of contents on the left on wide screens, at the top otherwise. */
+@media (min-width: 1180px){
+  nav.toc{position:fixed;top:0;left:0;bottom:0;width:290px;margin:0;border-radius:0;border-width:0 1px 0 0;
+          overflow-y:auto;padding:18px 16px 40px;font-size:.88rem;line-height:1.35}
+  nav.toc a{padding:2px 6px;border-radius:4px}
+  nav.toc a.current{background:var(--code);color:var(--accent);font-weight:bold}
+  body{padding-left:290px}
+}
+.refs li{margin:6px 0}
+.road li{margin:4px 0}
+.road .now{font-weight:bold;color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>etl2d — Notes</h1>
+  <p>etl2d: geographic data moved and transformed by drawing a graph of boxes, in the spirit of FME, built on GDAL/OGR, in Python, with Dear ImGui. Each box is a node; nodes are found in folders at start, as ComfyUI's custom nodes, so anyone adds one by dropping a Python file. A sibling of render2d and carto2D: render2d draws the previews. This document comes before the code; when in doubt, it is authoritative.</p>
+</header>
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <a href="#idea">1. The idea</a>
+  <a href="#install">2. Installing: Python and a .venv</a>
+  <a href="#flow">3. Features flow one by one</a>
+  <a href="#schema">4. The structure travels before the data</a>
+  <a href="#needs">5. The needs come up</a>
+  <a href="#feature">6. A feature in etl2d</a>
+  <a href="#nodes">7. The first nodes</a>
+  <a href="#custom">8. Custom nodes: a Python file in a folder</a>
+  <a href="#fanout">9. One output, two nodes; looking inside</a>
+  <a href="#file">10. A workflow is a file; running without a window</a>
+  <a href="#window">11. The window</a>
+  <a href="#layout">12. The project's files</a>
+  <a href="#steps">13. The steps</a>
+  <a href="#decisions">14. Decisions</a>
+  <a href="#refs">15. References</a>
+</nav>
+
+<!-- ======================================================================= -->
+<section id="idea">
+  <h2>1. The idea</h2>
+  <p>Four draughtsmen correct façades and address points in MicroStation; FME squeezes the files into Oracle tables. FME does it by a graph: a reader, transformers, a writer, joined by lines, and data flowing through. It is powerful and expensive. etl2d does the common part of it with free tools: GDAL/OGR reads and writes every format (shapefile, GeoPackage, FlatGeobuf, PostGIS…), PROJ reprojects, Python glues, and a node editor draws the graph.</p>
+<pre>Directory reader (UrbIS, *.shp) ─► Attributes ─► Clip (Grand-Place) ─► Reproject (31370 → 3812) ─► Writer (GeoPackage)
+                                                      └─ outside ─► Writer (rejects.fgb)</pre>
+  <p>What it borrows:</p>
+  <ul>
+    <li>From <strong>FME</strong>: features flowing one by one (§3), the structure known before the data (§4), the names of its common transformers (AttributeManager, Reprojector, Clipper, PythonCaller).</li>
+    <li>From <strong>ComfyUI</strong>: nodes found at start in folders, a node = a Python class (§8); a workflow saved as a JSON file and run again without the window (§10).</li>
+    <li>From <strong>carto2D</strong>: Dear ImGui and its docking (the same look), the navigation of the map (its notes §9 to §11) for the previews, drawn by <strong>render2d</strong>.</li>
+  </ul>
+  <p>What it is not, at first: a replacement for PostGIS (the heavy spatial joins stay in the base, where an index does them), nor a scheduler (a workflow runs when asked).</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="install">
+  <h2>2. Installing: Python and a .venv</h2>
+  <p>As ComfyUI: an official Python from python.org (3.12 or later), and a <code>.venv</code> folder inside the project holding everything else. Nothing installed system-wide, nothing to conflict with another program; to start again, delete <code>.venv</code>.</p>
+  <ul>
+    <li><strong>GDAL for Python</strong> is the delicate part on Windows: PyPI publishes only its sources (building them needs a compiler and GDAL's own libraries). Christoph Gohlke builds ready wheels of GDAL for Windows, served by a pip index: <code>pip install --index-url https://gisidx.github.io/gwi gdal</code> (Python 3.12 to 3.15, 64-bit). That is the whole GDAL: <code>ogr</code>, <code>osr</code>, its formats, PROJ inside.</li>
+    <li><strong>The window</strong>: <code>imgui-bundle</code> from PyPI: Dear ImGui, imgui-node-editor (the graph), ImPlot (charts, later), the docking.</li>
+    <li><strong>render2d</strong> is not installed in the <code>.venv</code>: etl2d calls <code>render2d.exe</code> (the release zip, or the one installed with carto2D), its folder given once in the settings. Its GDAL and etl2d's do not meet: they exchange files only.</li>
+  </ul>
+<pre>setup.bat      python -m venv .venv, then pip install -r requirements.txt (GDAL from Gohlke's index)
+run.bat        .venv\Scripts\python -m etl2d</pre>
+  <p>On Linux (the CI, the agent's machine), GDAL's bindings come from the system's packages or from pip with GDAL installed; the code is the same.</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="flow">
+  <h2>3. Features flow one by one</h2>
+  <p>A node does not wait for the whole layer: it receives a feature, does its work, passes it on. In Python this is a <em>generator</em>: a function that gives its results one at a time with <code>yield</code>, and stops in between until asked for the next one.</p>
+<pre>def run(self, features):              # a Clip node, much simplified
+    for f in features:                # asks the node before for one feature, then waits
+        if f.geometry.Within(self.box):
+            yield f                   # gives it to the node after, then waits to be asked again</pre>
+  <p>The <strong>writer</strong> pulls: it asks the clip for a feature, the clip asks the reprojector, the reprojector asks the reader, which reads one from the file. Then back up the chain. Only a few features are in memory at any time.</p>
+  <div class="calc"><strong>663,358 UrbIS addresses through Reader → Clip → Writer</strong><ol>
+    <li>All at once: every address in memory before the clip starts. An OGR feature of 17 fields and a point weighs some hundreds of bytes in Python; 663,358 × 500 bytes ≈ 330 MB, before anything is written.</li>
+    <li>One by one: a handful of features in memory; the first ones are written while the last are not yet read.</li>
+    <li>The time: Python handles some tens of thousands of features per second through a few simple nodes. At 20,000 a second: 663,358 ÷ 20,000 ≈ 33 s. For an ETL that runs when asked, acceptable.</li>
+  </ol></div>
+  <div class="calc"><strong>Measured at step 1 (16 November)</strong><ol>
+    <li>200,000 address-like points (3 columns) through Reader → Attributes → Clipper (the Grand-Place: 23,675 inside) → Reprojector → Writer (GeoPackage): <strong>4.8 s</strong>, 200,000 ÷ 4.8 ≈ <strong>41,000 features read a second</strong>, twice the estimate.</li>
+    <li>Where the time goes (Python's profiler): about three quarters in the reader, turning each OGR feature into an etl2d Feature (its fields one by one, its geometry cloned). The clip's test: about 5 %.</li>
+    <li>The 663,358 addresses would then take some 16 s. If one day it is too slow: GDAL can hand a whole batch of features at once (its Arrow interface), and the reader would build Features from batches.</li>
+  </ol></div>
+  <p>That is also what makes the Python caller natural (§7): one function, one feature in, zero, one or several out.</p>
+  <p>Some nodes cannot work one by one: a sort, a group-by, "the 10 largest". They read everything first (into memory or a temporary file) and give the result after. They say so in the node (a small mark), so that the graph's cost is visible.</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="schema">
+  <h2>4. The structure travels before the data</h2>
+  <p>In FME, when a column is removed, the next transformer's list of columns is already up to date, without running anything. etl2d does the same: each node declares two functions.</p>
+<pre>schema(inputs) -> outputs     the structure: columns, geometry type, system. Instant; called at every change of the graph.
+run(inputs)    -> outputs     the features. Called when the workflow runs.</pre>
+  <div class="calc"><strong>The UrbIS addresses, structure only</strong><ol>
+    <li>The reader opens the shapefile's header (no feature read): 17 columns (<code>PARENTID</code>, a String of 88 characters; <code>STRNAMEFRE</code>, the street name in French; <code>POLICENUM</code>, the house number…), points, EPSG:31370, 663,358 features.</li>
+    <li>The attribute manager drops <code>PARENTID</code>, renames <code>STRNAMEFRE</code> to <code>street</code>, adds <code>source</code> String 20 = 'UrbIS 2026': 17 − 1 + 1 = 17 columns, one renamed. Shown at once in its node.</li>
+    <li>The reprojector changes the system only: EPSG:3812.</li>
+    <li>The writer knows, before any run, the table it will create: 17 columns with their types, points, EPSG:3812. A mistake (a column name longer than the 10 characters a shapefile allows, a limit of its DBF of 1983) is said in the node, in red, before the run.</li>
+  </ol></div>
+  <p>A <strong>schema</strong> is a small object: the list of columns (name, type, width), the geometry type, the system (WKT), and the count when known. It is what the node editor shows on each link when the mouse is over it.</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="needs">
+  <h2>5. The needs come up</h2>
+  <p>The structure goes down the graph (§4). The needs come up: from the writers to the readers, each node says which part of the features it will use, and the reader asks its source only for that. A database does the same when it pushes its filters and its columns down to the table.</p>
+  <div class="calc"><strong>The UrbIS buildings clipped to the Grand-Place (16 November)</strong><ol>
+    <li>Without: the reader reads the 247,625 buildings and turns each into a Feature; the clip keeps 1,356. 44 s with the shapefile on the NAS, 6 s on a local disk.</li>
+    <li>With: the clip says "only what touches 148,500 170,400 149,300 171,000"; the reader passes the box to the source, which uses its spatial index (a shapefile's <code>.qix</code>, a GeoPackage's R-tree, PostGIS's GiST). Only the buildings near the Grand-Place are read.</li>
+    <li>On the test file of §3 (200,000 points, a GeoPackage): 4.8 s became <strong>1.15 s</strong>, 23,691 features read instead of 200,000, without anything written by hand in the workflow.</li>
+  </ol></div>
+
+  <h3>Two things come up</h3>
+  <ul>
+    <li><strong>A box</strong>: only the features near it are needed. None: all of them.</li>
+    <li><strong>Columns</strong>: only these are used. The reader tells GDAL to ignore the others (<code>SetIgnoredFields</code>, as render2d does for its styles, its §30) and builds the Features with those only. None: all of them.</li>
+  </ul>
+
+  <h3>Node by node</h3>
+  <div class="scroll"><table>
+    <tr><th>Node</th><th>What it asks of its input</th></tr>
+    <tr><td>Writer</td><td>everything: every column it writes, every feature</td></tr>
+    <tr><td>Clipper</td><td>its box (cut down to what is asked after it), and the columns its outputs' consumers use. Its <em>outside</em> joined: every feature, no box: it must see the far ones to send them out.</td></tr>
+    <tr><td>Attributes</td><td>the columns kept that are used after it, by their old names (<code>street</code> is asked as <code>STRNAMEFRE</code>); a column it drops or adds: not asked</td></tr>
+    <tr><td>Reprojector</td><td>the box asked after it, taken back into the source's system (below); the columns as asked</td></tr>
+    <tr><td>Python caller</td><td>everything, since its code is not read to guess what it uses; with its <code>reads</code> parameter (the columns the code reads): those, and what is used after it, less the columns it adds. A box: never (the code may move a feature)</td></tr>
+    <tr><td>a node without <code>needs()</code></td><td>everything: a custom node written quickly is always right, only slower</td></tr>
+  </table></div>
+  <p>One output joined to two nodes: what either needs, the box around both boxes, the columns of both. An output joined to nothing: nothing asked for it.</p>
+
+  <div class="calc"><strong>The box through the reprojector</strong><ol>
+    <li>A clip after a Lambert 72 → Lambert 2008 reprojector asks the box 648,500 670,400 649,300 671,000 (Lambert 2008). A Lambert 72 file knows nothing of it.</li>
+    <li>The box's edges are taken back to Lambert 72, 21 points on each (a straight edge in one system is slightly curved in another): about 148,500 170,400 149,300 171,000, to a few decimetres (the change of datum, §7).</li>
+    <li>1 % of margin around: 8 m on 800 m, 6 m on 600 m: 148,492 170,394 149,308 171,006. Nothing near the edge is lost; the clip's exact test does the rest.</li>
+  </ol></div>
+
+  <h3>In code</h3>
+  <p>A third function beside <code>schema()</code> and <code>run()</code>: <code>needs(wanted)</code> receives, per output, what the nodes after it need (a <code>Needs(bbox, columns)</code>), and returns what it needs per input. The graph calls them backwards, writers first, just before running (<code>plan_needs()</code>); a reader finds in <code>self.wanted</code> what to ask. <code>etl2d run</code> prints it under each reader: "asked to the source: box 148500 170400 149300 171000, 2 of 3 columns".</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="feature">
+  <h2>6. A feature in etl2d</h2>
+<pre>class Feature:
+    attributes: dict[str, object]     # 'street': 'Grand-Place', 'POLICENUM': '12'...
+    geometry:   ogr.Geometry | None   # GDAL's own: no conversion between nodes
+    fid:        int | None            # its number in the source
+    source:     str                   # the file it came from (the directory reader sets it)</pre>
+  <ul>
+    <li><strong>The geometry stays GDAL's</strong> (<code>ogr.Geometry</code>): reading, reprojecting, clipping and writing are GDAL's own operations, so it never changes form on the way. A Python caller that prefers another library converts it itself (WKT, WKB).</li>
+    <li><strong>The attributes are a plain dictionary</strong>: what a Python caller expects to read and write, without knowing OGR.</li>
+    <li>The structure is not repeated in every feature: it is the link's schema (§4).</li>
+  </ul>
+</section>
+
+<!-- ======================================================================= -->
+<section id="nodes">
+  <h2>7. The first nodes</h2>
+
+  <h3>Reader</h3>
+  <p>A file or a connection (<code>PG:host=… dbname=…</code>, the password never written, as in carto2D §65), and a layer when the source has several. Its node shows the structure (§4), the count, the extent, the system. Option: a bounding box asked to the source itself (<code>SetSpatialFilterRect</code>), which uses its spatial index: the clip that follows then sees only the features near the box.</p>
+
+  <h3>Directory reader</h3>
+  <p>A folder, a pattern (<code>*.shp</code>), sub-folders or not. Every file found is read in turn, all into one flow; a column <code>source_file</code> is added (FME's <code>fme_basename</code>). Files of different structures (a delivery per municipality, one with a column more): the structure is the union of all, a missing value is empty, and the node lists the differences, file by file, column by column.</p>
+  <p><strong>Ask the source first</strong> (both readers: their <em>bbox</em>). Tried on 16 November: the 247,625 UrbIS buildings, a shapefile on the NAS, clipped to the Grand-Place: 1,356 kept, 44 s, because every building was read and turned into a Feature only to be thrown away by the clip. With the reader's bbox set to the clip's box, the source gives only the buildings near it (with its index: the <code>.qix</code> of a shapefile, made by <code>qix.bat</code>, or a GeoPackage's R-tree); on the test file of §3, 4.8 s became 2.2 s. Since 0.1.3 the clip hands its box up to the reader by itself (§5): the reader's own bbox is for a box no clip states.</p>
+
+  <h3>Attributes (FME's AttributeManager)</h3>
+  <p>The columns received, one row each: a box to keep it, its name to rename it, its type; a "+" for a new column with its type and a value (a constant, or an expression on the others, later). The order of the rows is the order written.</p>
+
+  <h3>Expressions: computed columns, without Python <span class="tag">0.6.0</span></h3>
+  <p>In Attributes, a new column's <em>value</em> that begins with <code>=</code> is computed for each feature, as in a spreadsheet; without <code>=</code> it stays a constant (<code>UrbIS 2026</code>). A row named as a column that arrives replaces its value (<code>area</code> = <code>= round(area)</code>). FME's AttributeCreator and ExpressionEvaluator in one place. Later, the same expressions as the Filter's rules (a comparison "is true").</p>
+  <div class="calc"><strong>On a real building of the Grand-Place</strong> (fid 9, <code>inspire_id …/building/1642208</code>, its column <code>area</code> = 103, in EPSG:3812)<ol>
+    <li><code>= area * 2</code> → 206</li>
+    <li><code>= round(area / 10) * 10</code> → 103 / 10 = 10.3, rounded 10, × 10 = <strong>100</strong>: areas to the ten.</li>
+    <li><code>= area()</code> → 103.16: the area computed from the geometry, in m² of the system; <code>area</code> without brackets is the column (the official area, 103). Two names, two things: the brackets say "computed".</li>
+    <li><code>= length()</code> → 48.56: a polygon's perimeter (a line's length).</li>
+    <li><code>= npoints()</code> → 12: 11 corners, plus the last point that closes the ring (the same as the first).</li>
+    <li><code>= x(0)</code> → 648,583.02, <code>= y(0)</code> → 670,888.42: the first point.</li>
+    <li><code>= if(area >= 200, 'large', 'small')</code> → small.</li>
+    <li>An address: <code>= strnamefre || ' ' || policenum</code> → <strong>Grand-Place 14</strong>.</li>
+  </ol>Run on the whole GeoPackage (16 November, 0.6.0): the six columns above on the 1,356 buildings and the label on the 4,662 addresses, 0.59 s; the building fid 9 gives back exactly 100, 103.16, 48.56, 12, 648,583.02 and "small".</div>
+  <div class="poterne"><strong>Counting from zero</strong>
+    <p><code>x(0)</code> is the <em>first</em> point, <code>x(1)</code> the second, <code>x(14)</code> the fifteenth; the last is <code>x(npoints() - 1)</code>, or <code>x(-1)</code> (a negative number counts from the end, as in Python: <code>x(-2)</code> the one before the last). The same for <code>substr(text, 0, 3)</code>: the first three letters. As Python, FME and GDAL count; chosen on 16 November, for its first user, who codes.</p>
+    <p>And beware of rings: a polygon's last point repeats its first. On the building above, <code>npoints()</code> = 12 for 11 corners, and <code>x(11)</code> = <code>x(0)</code>. The points are counted through every part and ring, in their order: the outer ring of the first polygon, its holes, then the next polygon.</p>
+  </div>
+  <div class="scroll"><table>
+    <tr><th>Kind</th><th>What is written</th></tr>
+    <tr><td>Values</td><td>a column by its name (<code>area</code>; with spaces or capitals as they are, in double quotes: <code>"Area m2"</code>); numbers <code>12</code>, <code>0.5</code>; texts in single quotes <code>'maison'</code>; <code>NULL</code></td></tr>
+    <tr><td>Arithmetic</td><td><code>+ - * /</code>, <code>%</code> (remainder), brackets; <code>||</code> joins texts (a number joined becomes text)</td></tr>
+    <tr><td>Comparison, logic</td><td><code>= != &lt; &lt;= &gt; &gt;=</code>, <code>AND OR NOT</code>, <code>IS NULL</code>, <code>IS NOT NULL</code>, <code>IN ('a', 'b')</code></td></tr>
+    <tr><td>Numbers</td><td><code>round(x)</code>, <code>round(x, 2)</code>, <code>floor</code>, <code>ceil</code>, <code>abs</code>, <code>sqrt</code>, <code>min(a, b, …)</code>, <code>max(…)</code></td></tr>
+    <tr><td>Texts</td><td><code>upper</code>, <code>lower</code>, <code>trim</code>, <code>len(text)</code>, <code>substr(text, start, count)</code>, <code>replace(text, old, new)</code>, <code>starts(text, begin)</code>, <code>contains(text, part)</code></td></tr>
+    <tr><td>Choice, types</td><td><code>if(condition, then, else)</code>, <code>coalesce(a, b, …)</code> (the first not empty), <code>int(x)</code>, <code>real(x)</code>, <code>text(x)</code></td></tr>
+    <tr><td>Geometry</td><td><code>area()</code>, <code>length()</code>, <code>npoints()</code>, <code>nparts()</code>, <code>x(i)</code>, <code>y(i)</code>, <code>centroid_x()</code>, <code>centroid_y()</code>, <code>xmin()</code> <code>ymin()</code> <code>xmax()</code> <code>ymax()</code>, <code>geomtype()</code> ('Point', 'MultiPolygon'…)</td></tr>
+  </table></div>
+  <p><strong>Empty values</strong>: a calculation with an empty value (NULL) gives NULL (<code>area * 2</code> on a building without area: empty, not an error); a comparison with NULL is false, as in the Filter; <code>coalesce(area, 0)</code> gives 0 for the empty ones. <code>x(30)</code> on a geometry of 12 points: NULL, and a note on the node counting how many.</p>
+  <p><strong>Said before running</strong> (§4): a column that does not arrive, a function that does not exist, a bracket missing, the place of the mistake shown (<code>= area * * 2</code>: "position 10: a value expected, not '*'": the second star is the tenth character of the field). The new column's type is the one chosen in its row; the result converted to it (a text where a number is asked: an error naming the feature, as the Python caller's).</p>
+  <p><strong>Its needs</strong> (§5): the columns its expressions read are asked to the reader, with the others used after it.</p>
+  <p><strong>How</strong>: a small parser of our own, not Python's <code>eval</code>: an expression can only compute, never open a file or run a command; it is read once when the parameters change (its mistakes then), and evaluated per feature as a small tree of functions. In <code>etl2d/expr.py</code>, usable by any node (the Filter next, a custom node too).</p>
+
+  <h3>Reprojector</h3>
+  <p>From the system of the input (read from the source, or forced when a file says nothing or lies) to the one asked. The node shows the transformation PROJ chose and its accuracy, as carto2D's Map system dialog (its §70).</p>
+  <div class="calc"><strong>A point of the Grand-Place, from Belgian Lambert 72 to Belgian Lambert 2008</strong><ol>
+    <li>In EPSG:31370: x = 148,900, y = 170,700.</li>
+    <li>In EPSG:3812, with the transformation PROJ takes without extra grid files: x = 648,899.61, y = 670,700.27.</li>
+    <li>The 500,000 m of difference are by design: Lambert 2008's false origin was moved so that no Belgian coordinate can be mistaken for a Lambert 72 one. What remains, −0.39 m and +0.27 m, is the change of datum (BD72 to ETRS89), as PROJ estimates it here; with the official grid it can differ by some centimetres. Which one PROJ used is what the node shows.</li>
+  </ol></div>
+
+  <h3>Clipper</h3>
+  <p>A box (xmin, ymin, xmax, ymax, in the input's system), later a polygon. Several outputs, each used or not:</p>
+  <div class="scroll"><table>
+    <tr><th>Output</th><th>What goes out</th><th>GDAL's test</th></tr>
+    <tr><td>inside</td><td>the features entirely in the box</td><td><code>Within</code></td></tr>
+    <tr><td>partial</td><td>the features across the edge</td><td><code>Intersects</code> and not <code>Within</code></td></tr>
+    <tr><td>outside</td><td>the features entirely out</td><td><code>Disjoint</code></td></tr>
+  </table></div>
+  <p>And one option for the features across the edge: <strong>whole</strong>, or <strong>cut</strong> at the box (<code>Intersection</code>); "inside + partial, cut" is the usual "clip".</p>
+  <div class="calc"><strong>A pavement 200 m long that leaves the box by 30 m</strong><ol>
+    <li>It touches the box and is not entirely in it: it goes out on <em>partial</em>.</li>
+    <li>Whole: 200 m. Cut: 200 − 30 = 170 m, its end on the box's edge.</li>
+    <li>A point exactly on the edge: <code>Within</code> says no (on the edge is not inside), <code>Intersects</code> says yes: partial. Said in the node's help, because it surprises.</li>
+  </ol></div>
+
+  <h3>Filter: the switch on attributes (FME's TestFilter) <span class="tag">0.4.0</span></h3>
+  <p>One input; one output per rule, plus <em>else</em>. A rule is a name (its output's), a column, a comparison, a value. Each feature goes out on the <strong>first</strong> rule it meets, in the order of the rows, or on <em>else</em> if none: no code, and nothing lost, since what no rule takes goes somewhere visible.</p>
+  <div class="calc"><strong>The 1,356 buildings of the Grand-Place, by size</strong> (the rules, top to bottom)<ol>
+    <li><code>small</code>: <code>area &lt; 50</code></li>
+    <li><code>medium</code>: <code>area &lt; 200</code></li>
+    <li><em>else</em>: the rest, 200 m² and more.</li>
+  </ol>A building of 30 m² meets rule 1 first: <em>small</em>, although 30 &lt; 200 is true too: the order matters, and it is what one would write by hand ("under 50; otherwise under 200; otherwise"). A building with no area (empty, <code>NULL</code>): no comparison is true on an empty value: <em>else</em>, where it is seen, not lost. Measured on the real 1,356 buildings (16 November, the GeoPackage made by etl2d itself: parcels, buildings, addresses, EPSG:3812), each output to its layer of one GeoPackage: <strong>357 small, 802 medium, 197 else</strong>, 0.10 s. Their areas go from 4 to 4,347 m², none empty: here <em>else</em> holds only the large ones.</div>
+  <div class="scroll"><table>
+    <tr><th>Comparison</th><th>True when the value…</th><th>Example</th></tr>
+    <tr><td><code>=</code>, <code>≠</code></td><td>is (is not) the value given</td><td><code>type = maison</code></td></tr>
+    <tr><td><code>&lt;</code>, <code>≤</code>, <code>&gt;</code>, <code>≥</code></td><td>compared as numbers when the column is a number, as text otherwise</td><td><code>area ≥ 200</code></td></tr>
+    <tr><td><code>in</code>, <code>not in</code></td><td>is one of a list, separated by commas</td><td><code>municipality in Ixelles, Etterbeek</code></td></tr>
+    <tr><td><code>contains</code>, <code>starts with</code></td><td>holds (begins with) the text, capitals ignored</td><td><code>street starts with rue</code></td></tr>
+    <tr><td><code>is empty</code>, <code>is not empty</code></td><td>is <code>NULL</code> or "" (no value to give)</td><td><code>POLICENUM is empty</code></td></tr>
+  </table></div>
+  <p><strong>Said before running</strong> (§4): a rule on a column that does not arrive (renamed before, in Attributes), a number expected and "abc" given for a column of numbers, two rules of the same name, a rule named <em>else</em>: the node is red and says which rule. The structure of each output is the input's.</p>
+  <p><strong>What it needs</strong> (§5): the columns its rules read, plus what the nodes after it need; the box of its outputs together (if one needs everything, everything). An output joined to nothing: its features are dropped, as the Clipper's (§9); kept (§9), they are written.</p>
+  <p><strong>Ports made from the parameters.</strong> Until now a node's ports are fixed in its code (<code>outputs = [...]</code>). The Filter's depend on its rules: a node may give a method <code>outputs_for(params)</code>, and the graph, the window and the run ask it instead of the fixed list. Renaming a rule in Properties renames its output and the links follow (<em>small</em> → <em>tiny</em>: the link to the Writer stays); removing a rule removes its links, and the log says which. The same mechanism serves later nodes with ports from their parameters: several layers into one map (the MapWriter, §13), a router by value.</p>
+  <p><strong>In the window</strong>: two lines per rule, the panel being narrow: its name, with ^ v (move it up, down: the order matters) and x; then the column chosen in a list of the columns received, the comparison in a list, the value typed (none for <em>is empty</em>). "+ rule" adds one. A name typed is applied when the field is left: its links follow then; a name already taken (or empty) is refused, the rule keeps its old name and the log says why. A rule removed: its links go, the log says which ("link #2 Filter small &gt; #3 removed: no output 'small' any more"). A new rule on a column of numbers says "no value yet" in red until it has one.</p>
+
+  <h3>MapWriter: the printer <span class="tag">0.5.0</span></h3>
+  <p>An output node that makes a <em>map</em> instead of a layer: the features it receives drawn by render2d into a PNG, an SVG or a PDF (the file's extension says which). Its parameters:</p>
+  <div class="scroll"><table>
+    <tr><th>Parameter</th><th>What</th><th>Empty</th></tr>
+    <tr><td>path</td><td><code>out/buildings.pdf</code>, <code>.png</code>, <code>.svg</code></td><td>red: a path is needed</td></tr>
+    <tr><td>style</td><td>a YSLD file (render2d's styles, carto2D's)</td><td>render2d's built-in style</td></tr>
+    <tr><td>basemap</td><td>a source drawn under: <code>basemaps/urbis-ortho-2024.xml</code>, a GeoTIFF, another layer</td><td>none, white</td></tr>
+    <tr><td>bbox</td><td>the area drawn, in the features' system</td><td>all the features, plus 5 %</td></tr>
+    <tr><td>size</td><td>the image's pixels, <code>1600x1200</code> (PNG, SVG without page)</td><td>1600 wide, the height from the area</td></tr>
+    <tr><td>page</td><td>a printed page: A4 or A3, portrait or landscape (PDF, SVG): the map in a frame, a title, a scale bar, a north arrow, the legend (render2d's notes §74)</td><td>no page: an image of the area</td></tr>
+    <tr><td>scale, title</td><td>with a page: <code>1000</code> for 1:1000; the title written at its top</td><td>the area fitted; no title</td></tr>
+    <tr><td>name</td><td>the layer's name in the legend</td><td>"features"</td></tr>
+  </table></div>
+  <p><strong>How</strong>: each feature received is written to a FlatGeobuf in a temporary folder (as a kept output, §9: one at a time, nothing in memory); at the end of the flow, render2d is called once:</p>
+<pre>render2d [basemap] features.fgb [--style buildings.yaml] --crs EPSG:3812
+         --bbox 648500 670400 649300 671000 --size 1600x1200 -o out/buildings.png
+render2d [basemap] features.fgb [--style …] --crs EPSG:3812 --page A4-landscape --scale 2500 --title "…" -o out/buildings.pdf</pre>
+  <p>The map is written beside under a temporary name and renamed at the end: a failed or stopped run leaves the old map. render2d is found as the window's Map finds it: the node's own <em>render2d</em> parameter, else the window's setting (Window ▸ Settings, <code>settings.json</code>), else the PATH. Not found: red before the run.</p>
+  <p><strong>Its needs</strong> (§5): its box, when given, goes up to the readers; its columns: all (the YSLD may use any; reading the style to know which: later).</p>
+  <div class="calc"><strong>The 197 large buildings of the Grand-Place</strong> (the Filter's <em>else</em>, §7): Reader buildings → Filter → <em>else</em> → MapWriter <code>large.png</code>, no style, no box: render2d draws the 197 in its default style, the area of the 197 plus 5 %, 1600 pixels wide. Then a page: <code>large.pdf</code>, A4-landscape, 1:2500, title "Large buildings, Grand-Place": the same features on a printed page with its legend line "large buildings". Measured (16 November, render2d 0.5.11): both maps from the one <em>else</em> output (a fan-out, §9) in 0.69 s for the whole run, reading included: <code>large.png</code> 1600 × 1182 pixels, 398 kB; <code>large.pdf</code> 48 kB, the title, the 1:2500 scale bar, the north arrow, the legend.</div>
+  <p><strong>Later</strong>: one map per value of a column (<code>group by: munniscode</code>: one PDF per municipality, the value in the title); several layers on one map (several inputs, ports made from the parameters as the Filter's); the YSLD read to ask only the columns it uses.</p>
+
+  <h3>Python caller</h3>
+  <p>A function written in the node (or a file), called for each feature:</p>
+<pre>def process(feature):
+    feature.attributes['street'] = feature.attributes['street'].title()
+    if feature.attributes['POLICENUM'] in ('', None):
+        return None              # dropped
+    return feature               # or a list: several features out</pre>
+  <p>An error in the function stops the run and shows the feature that caused it (its <code>fid</code>, its file, its attributes): the common case is a value nobody expected. The new columns it adds are declared in the node (their names and types), so that the structure still travels before the data (§4).</p>
+
+  <h3>Writer</h3>
+  <p>A format (any GDAL driver that writes), a file or a connection, a layer or table name, and a mode: <strong>create</strong> (refused if it exists), <strong>replace</strong>, <strong>append</strong>. A run that fails half way leaves what was there:</p>
+  <ul>
+    <li>GeoPackage, SQLite, PostGIS: <em>append</em> adds in one transaction, rolled back on error. <em>create</em> and <em>replace</em> write into a new layer under a temporary name (<code>parcels_etl2d_tmp</code>), in one transaction; only when everything is written is the old layer dropped and the new one renamed. On error the new one is dropped, and a file the writer had created is removed.</li>
+    <li>Formats without transactions (shapefile, FlatGeobuf, GeoJSON): written in a temporary folder beside, moved in place at the end. For a shapefile only its own parts move (<code>.shp</code>, <code>.shx</code>, <code>.dbf</code>, <code>.prj</code>, <code>.cpg</code>, the indexes): a <code>parcels.yaml</code> beside <code>parcels.shp</code> is never touched.</li>
+  </ul>
+  <p> It counts what it wrote, and says what the format changed (a shapefile cuts names to 10 characters, a GeoPackage does not).</p>
+  <p><strong>Several layers into one GeoPackage</strong> (asked on 16 November: parcels, buildings and addresses in one file): one Writer per layer, the same path, each its layer name. A GeoPackage allows one transaction at a time ("database is locked" otherwise): writers into the same GeoPackage or SQLite file take turns during the run, the second starting when the first has committed (0.3.2; 1 test: 23). Each layer is safe on its own: if the third fails, the first two are written, the third is as it was. Later, perhaps, one Writer with several inputs (ports made from its parameters, as the Filter's). Two Writers on the <em>same</em> layer of the same file are refused before running (0.4.1): the layer left empty takes the file's name, so three Writers to <code>grand-place.gpkg</code> without a layer name would all write <code>grand-place</code>, each replacing or mixing the others' features (tried on 16 November: 7,220 parcels, buildings and addresses in one layer, points and polygons together). The second and third say "#20 Writer writes layer 'grand-place' of grand-place.gpkg too: give each Writer its own layer".</p>
+  <p><strong>The spatial index of a GeoPackage</strong> (0.4.3): written without it (<code>SPATIAL_INDEX=NO</code>), then made once on the final layer, after the rename (<code>CreateSpatialIndex()</code>). GDAL's own, built during the transaction and carried through the rename, failed with the GDAL of Gohlke's wheels ("failed to execute insertion in RTree: UNIQUE constraint failed: rtree_parcels_etl2d_tmp_geom.id", 16 November: the first layer of three) though not with GDAL 3.8; made by us at the end, it works with both, and an index left by a killed run is dropped first.</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="custom">
+  <h2>8. Custom nodes: a Python file in a folder</h2>
+  <p>As ComfyUI: at start, etl2d reads every <code>.py</code> file of <code>nodes/</code> (its own) and <code>custom_nodes/</code> (the user's), with <code>importlib</code>, and keeps every class marked as a node. The built-in nodes are found the same way: they are not special, they are the first examples.</p>
+<pre>from etl2d import node, Input, Output, Param
+
+@node(name="Clipper", category="Geometry")
+class Clipper:
+    inputs  = [Input("features")]
+    outputs = [Output("inside"), Output("partial"), Output("outside")]
+    params  = [Param("box", "bbox"), Param("cut", "bool", default=True)]
+
+    def schema(self, schemas):            # §4: the same structure on every output
+        s = schemas["features"]
+        return {"inside": s, "partial": s, "outside": s}
+
+    def run(self, features):              # §3: one by one
+        ...</pre>
+  <ul>
+    <li><strong>The parameters become widgets</strong> in the node and in the properties panel: a <code>"bbox"</code> four numbers, a <code>"bool"</code> a checkbox, a <code>"path"</code> a field and a "…" button, a <code>"crs"</code> a field with carto2D's list of systems later.</li>
+    <li><strong>"Reload"</strong> reads the files again: a node changed in a text editor is used at the next run, without restarting.</li>
+    <li>A file that does not load (a syntax error) is listed with its error in the log, and its nodes are absent; the others work.</li>
+    <li>A custom node runs with the user's rights, as a script would: only files one trusts go in <code>custom_nodes/</code> (said in the README, as ComfyUI does).</li>
+  </ul>
+</section>
+
+<!-- ======================================================================= -->
+<section id="fanout">
+  <h2>9. One output, two nodes; looking inside</h2>
+  <p>One by one has a price: an output joined to two nodes must give every feature to both. If the first asks for features faster than the second, the second's must wait somewhere.</p>
+  <ul>
+    <li>In memory (<code>itertools.tee</code>): fine while the two read at about the same pace.</li>
+    <li>Beyond a limit (100,000 features waiting, to be measured), in a temporary FlatGeobuf, read back by the slower one.</li>
+  </ul>
+  <h3>Looking inside (step 4)</h3>
+  <p>FME's best feature: what does this link carry? In etl2d, three pieces.</p>
+
+  <p><strong>1. Keep an output</strong> ✓ 0.2.1. A right click on an output port (or on a link leaving it) ▸ <em>Keep</em>. What is kept is an <em>output</em>, not a link: every link leaving the same port carries the same features (§9 above), and an output joined to nothing can be kept too, to see what is thrown away. In the file: <code>"keep": [[3, "outside"]]</code> beside <code>"links"</code>. The port's name turns blue, its links are drawn blue and thicker. From the command line too: <code>run</code> writes the kept files and says "kept #3 Clipper outside: 176,309 in …".</p>
+  <p>During the run, each feature passing a kept output is also written to a FlatGeobuf: <code>job.etl2d/n3-outside.fgb</code>, in a folder beside the workflow named after it (a work folder: to put in <code>.gitignore</code>, to delete when one wants). The file is written to a temporary name and renamed at the end; a stopped or failed run keeps the previous one, marked "old".</p>
+
+  <div class="calc"><strong>The price, measured on the test of §3</strong> (16 November, 0.2.1: 200,000 addresses, Attributes dropping PARENTID, clipped to the Grand-Place, reprojected, written)<ol>
+    <li>Without keeping: the clip asks the reader its box (§5): 23,691 read: 23,675 inside, 16 partial (exactly on the box's edge: they touch it without being within), 1.50 s.</li>
+    <li>Keeping <em>inside</em>: nothing changes upstream; the same 23,675 written once more: <code>n3-inside.fgb</code>, 3.6 MB (154 bytes a feature: 2 columns, a point, the spatial index), 1.66 s: 0.16 s more.</li>
+    <li>Keeping <em>outside</em>: the outside is now used, so it needs everything (§5): the reader can no longer ask the box: 200,000 read, 176,309 outside, 27 MB written, 6.14 s: four times longer, because the reader reads eight times more. The reader's line "asks:" says it before the run ("asks: 2 of 3 columns", the box gone).</li>
+  </ol>Keeping is a choice made where one wants to look, not everywhere.</div>
+
+  <p><strong>2. The Table panel</strong> ✓ 0.2.1. A tab beside the Log, brought to the front when an output is kept, when a link of a kept output is clicked, or by its menu ▸ <em>Show in the Table</em>; a list chooses among the kept outputs. It shows the count, the time the file was written ("old" when the last run did not finish after it), the first 1,000 rows (read from the file by OGR, again when the file changes), the geometry as its type and size ("Point", "Polygon, 14 points"). Later: a click on a row selects that feature on the map.</p>
+
+  <p><strong>3. The Map panel</strong> ✓ 0.3.0. A tab beside the Graph (dragged elsewhere if one wants both in view), showing the kept output the Table shows. <code>render2d.exe</code> draws the kept file: <code>render2d n3-outside.fgb --bbox … --size 800x600 -o view.png</code>, in a default style (or a YSLD chosen), on a basemap if one is chosen (<code>basemaps/urbis-ortho-2024.xml</code>: the addresses on the orthophoto). The image is shown in the panel and navigated as carto2D's map (its notes §9 to §11): during a drag or a wheel, the image is moved and stretched; at the end of the gesture, render2d draws again (a few tenths of a second, in a thread). The first view: the file's extent, plus 5 % (again with "whole", or a double click). Under the map: the scale, the mouse in the map's system, the time of the last drawing, what render2d said when it failed. The map's system is the file's (a file in degrees: EPSG:3857, as render2d does), given to render2d with <code>--crs</code>, so a basemap in another system is converted to it.</p>
+  <div class="calc"><strong>Measured</strong> (16 November, the 176,309 addresses outside the Grand-Place, 27 MB): the whole file, 1,000 × 650 pixels: 2.7 s; after six wheel turns (1:12,000 to 1:3,200), 0.22 s, because render2d asks the file's spatial index only for the view's box (the kept file is written with its index, SPATIAL_INDEX=YES). The image moved and stretched during the gesture is blurred (the old pixels, enlarged 3.8 times) until the new one comes.</div>
+  <p>Where is <code>render2d.exe</code>? Window ▸ Settings, once: its path (empty: the one on the PATH), and a basemap to draw under the kept file (empty: none). Remembered in <code>settings.json</code> in the user's settings folder, beside <code>etl2d.ini</code>. Without render2d, the Table works and the Map says where to set it.</p>
+
+  <p><strong>Later (step 5): running from the middle.</strong> The kept files allow running again only what follows: a parameter changed after a kept output, and only the nodes after it run, reading the file instead of their sources (ComfyUI's cache, in files).</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="file">
+  <h2>10. A workflow is a file; running without a window</h2>
+<pre>{"etl2d": 1,
+ "nodes": [
+   {"id": 1, "type": "DirectoryReader", "pos": [40, 80], "params": {"folder": "data/urbis", "pattern": "*.shp"}},
+   {"id": 2, "type": "Clipper", "pos": [320, 80], "params": {"box": [148500, 170400, 149300, 171000], "cut": true}},
+   {"id": 3, "type": "Writer", "pos": [600, 80], "params": {"path": "out/grand-place.gpkg", "mode": "replace"}}],
+ "links": [[1, "features", 2, "features"], [2, "inside", 3, "features"]]}</pre>
+  <ul>
+    <li>Paths relative to the workflow's file: a folder of workflows and data moves as a whole.</li>
+    <li><code>python -m etl2d run job.json</code> runs it without a window: the log on the screen, a code at the end (0 all right). For a scheduled task, a script, the CI, and for an agent testing etl2d.</li>
+    <li>A node whose type is not found (a custom node missing on this computer) is kept in the file and shown in red: nothing is lost by opening and saving.</li>
+  </ul>
+</section>
+
+<!-- ======================================================================= -->
+<section id="window">
+  <h2>11. The window</h2>
+<pre>┌ File  Run  Window ─────────────────────────────────── job.json * ───────┐
+│ Nodes           │                                       │ Properties     │
+│  Attributes     │      the graph (imgui-node-editor)    │  of the node   │
+│  Geometry       │   Reader ─ Attributes ─ Clipper ─ …   │  clicked last  │
+│  Python         │                                       │                │
+│  Readers        │                                       │                │
+│  Writers        │                                       │                │
+├─────────────────┴───────────────────────────────────────┴────────────────┤
+│ Log   (Table · Map at step 4: the link looked at)                        │
+└──────────────────────────────────────────────────────────────────────────┘</pre>
+  <ul>
+    <li><strong>Adding</strong>: a click in the library puts the node in the middle of the view (several clicks: a staircase, not a pile); a right click on the graph's background opens the same list, and the node goes where the click was.</li>
+    <li><strong>Joining</strong>: a drag from a port to another, either way. A link the graph refuses (an input already joined, a loop, two inputs) is said in a tooltip while dragging, and not made. The mouse resting on a link shows its schema (§4). Delete removes the link or node selected; F shows the whole graph.</li>
+    <li><strong>Undo, redo, fit, box</strong> (0.4.2, asked on 16 November): Ctrl+Z and Ctrl+Y (or Ctrl+Shift+Z), also in Edit. Each frame where no gesture is going on (no mouse button held, no field being typed in), the workflow's text is compared to the last one; if it changed, the old one goes on the undo stack (200 deep). So every change is caught, wherever it was made (a node moved, a link, a rule, a paste), and a node dragged is one change, not sixty. Undo puts the old text back, positions included. Edit ▸ Fit the graph (or F) shows the whole graph; a drag on the background draws a box that selects the nodes in it, to move, copy or delete them together.</li>
+    <li><strong>Copy, paste, duplicate</strong> (0.2.2, asked on 16 November): Ctrl+C copies the selected nodes (a Ctrl+click adds one to the selection, a drag on the background draws a box around several) with their parameters, the links between them and their kept outputs; Ctrl+V pastes them under new numbers, their top-left corner at the mouse (from the Edit menu: in the middle of the view); Ctrl+D does both, 40 points down and right. The links to nodes not copied stay behind: the pasted nodes say "input not joined" until joined. The clipboard holds the nodes as JSON, the same as a workflow file: they paste into another workflow, into another etl2d, or into a text editor to be read or sent; a whole workflow file's text pastes in too.</li>
+    <li><strong>A node's title</strong> on a band of the colour of its category: readers green, writers brick, geometry blue, attributes ochre, Python violet, custom ones grey (0.3.0, asked on 16 November): the role of a node seen at a glance, even zoomed out. <strong>Joining, seen</strong>: while a link is dragged, over a port that accepts it the link turns green and says what would pass ("partial &gt; features: 3 columns, Point, EPSG:31370"); over one that refuses, red, and why; once made, the link stays bright green for a moment.</li>
+    <li><strong>Every change propagates at once</strong>: the schemas (§4) down, the needs (§5) up, before the next frame. Tried on the test of §3: joining the clip's <em>outside</em> to a Python caller turned the reader's line "asks: box 148500 170400 149300 171000, 2 of 3 columns" into "asks: 2 of 3 columns" (the outside needs everything, §5); ticking PARENTID again in the Attributes table made it "3 of 3 columns", and the writer's line "writes 4 columns". A node in error is drawn red and says why ("input not joined: features"); F5 then refuses and the log says which node. A text typed in Properties (a path, a connection, the Python code) propagates when the field is left or Enter pressed, not at each key (0.3.1): otherwise <code>PG:host=…</code> was tried at each letter, freezing the window while the server did not answer.</li>
+    <li><strong>Properties</strong>: one widget per parameter type (§7): a path with "…" (a file dialog; the path is kept relative to the workflow's folder), a box as four numbers, the Python code on several lines, the columns as a table (keep, column, new name) made from the schema received, rows (name, type, width, value) with + and x, the columns read as boxes to tick. Under them: what the node receives and makes, column by column, and its notes.</li>
+    <li><strong>Run</strong>: F5 or Run ▸ Run, in a thread; the window stays alive. The counts go green on each node (in, and each output) while it runs; the log gives the time and the rate. Esc stops between two features: the writers leave nothing (a test: neither the GeoPackage nor the shapefile made, no temporary folder left). Measured: the 200,000 points of §3, 23,691 features read, 2.07 s in the window against 1.15 s from a command prompt: the window takes its share of Python's time (one interpreter for both).</li>
+    <li><strong>The file</strong>: the positions of the nodes are saved in the JSON (<code>pos</code>); a file written by hand, without them, is laid out by depth (readers at the left, writers at the right) and shown whole. The title bar says the file and a star when it has changed; Quit asks "Save first?". Ctrl+N, Ctrl+O, Ctrl+S.</li>
+    <li><strong>The panels</strong> dock as in carto2D (hello_imgui); Window shows a closed one again, or the default layout. The layout is remembered in the user's settings folder (<code>etl2d/etl2d.ini</code>), not beside the workflows.</li>
+  </ul>
+</section>
+
+<!-- ======================================================================= -->
+<section id="layout">
+  <h2>12. The project's files</h2>
+  <p>How the code is put together, file by file, with one feature followed through it: <a href="code.en.html">Reading the code</a> (<code>docs/code.en.html</code>).</p>
+<pre>etl2d/
+  etl2d/            the package: graph.py, feature.py, schema.py, run.py (the generators, §3), registry.py (§7)
+    ui/             app.py (the window, menus, docking), state.py (what the window knows: the graph, the file, the run),
+                    editor.py (the graph), properties.py (the parameters' widgets), table.py and mapview.py (§9),
+                    settings.py (render2d's path, the basemap)
+    keep.py         the kept outputs' files, and a kept file's view for the Map (§9)
+  nodes/            the built-in nodes, found as custom ones: readers.py, attributes.py, geometry.py, python.py, writers.py
+  custom_nodes/     the user's (empty, with a README)
+  tests/            pytest: the engine without a window (the window is tried by hand)
+  docs/             these notes
+  requirements.txt  setup.bat  run.bat  README.md  LICENSE (AGPL, as render2d and carto2D)</pre>
+</section>
+
+<!-- ======================================================================= -->
+<section id="steps">
+  <h2>13. The steps</h2>
+  <ol start="0">
+    <li><strong>These notes</strong>, read and corrected.</li>
+    <li><strong>The engine, without a window</strong> ✓ 0.1.0 (16 November): Feature, schemas, the graph from a JSON file, the generators, the registry of nodes; Reader, Directory reader, Attributes, Reprojector, Clipper, Python caller, Writer; <code>python -m etl2d run</code> and <code>nodes</code>; <code>setup.bat</code>, <code>run.bat</code>; 12 tests (pytest) on small files made by the tests: the notes' examples (the 3 columns of §4, the Grand-Place in Lambert 2008, the 200 m pavement cut to 170 m, the two municipalities, the Python caller's error naming its feature, the writer's three modes and its rollback, the fan-out); 41,000 features a second (§3).</li>
+    <li><strong>The needs come up</strong> ✓ 0.1.3 (16 November, §5): <code>needs()</code>, <code>plan_needs()</code>; the readers ask their sources a box and columns; 5 more tests (the columns through Attributes, the outside that needs everything, the box through the reprojector, the fan-out, the Python caller's reads): 18.</li>
+    <li><strong>The window</strong> ✓ 0.2.0 (16 November, §11): imgui-bundle, the node editor, the library, the properties, the log; open, save, run with live counts, stop; one more test (Stop leaves nothing): 19. Copy and paste ✓ 0.2.2 (1 test: 21); a node added by a right click now lands where the click was at any zoom (it did not when zoomed out).</li>
+    <li><strong>Looking inside</strong> (§9): kept outputs and the Table ✓ 0.2.1 (16 November; 1 more test: the kept files, the outside that needs everything, the file's "keep", Stop that keeps the previous file: 20); the map drawn by render2d ✓ 0.3.0 (1 test: the map's system and first view of a file, in metres and in degrees: 22).</li>
+    <li><strong>A file dropped on the window</strong> (asked on 16 November): a <code>.shp</code>, <code>.gpkg</code>, <code>.fgb</code>… dragged from the Explorer onto the Graph makes a Reader of it, where it was dropped (a GeoPackage of several layers: a Reader per layer, or a choice); a folder: a Directory reader; a <code>.json</code> workflow: opened. GLFW gives the dropped paths (its drop callback, reached from hello_imgui's window).</li>
+    <li><strong>A node disabled, renamed; groups</strong> (asked on 16 November, as in FME and ComfyUI). <em>Disabled</em>: right click ▸ Disable (Ctrl+M): drawn grey, nothing goes through it, and the nodes after it that only it feeds are left out of the run (their writers do not touch their files); enabled again as it was; in the file, <code>"disabled": true</code>. <em>Renamed</em>: a title of one's own ("Buildings, Grand-Place"), its type kept under it in small (Reader #5): double click on the title, or a field in Properties; in the file, <code>"title"</code>. <em>Groups</em>: a coloured rectangle with a title behind some nodes ("Reading", "Cleaning"), moved with the nodes in it, resized by its corner: imgui-node-editor's group nodes; in the file, <code>"groups": [{title, pos, size, colour}]</code>.</li>
+    <li><strong>Reload</strong> of custom nodes, the run from the middle, the fan-out to a file.</li>
+    <li><strong>The switch on attributes</strong> ✓ 0.4.0 (16 November): the Filter (§7; FME's TestFilter): one input, one output per rule, plus <em>else</em>. With it, ports made from the parameters (<code>outputs_for(params)</code>, <code>Graph.rename_output()</code>, <code>prune_ports()</code>), useful to other nodes too. 4 tests (the first rule wins, the comparisons and the errors, the ports that follow the rules, its needs): 27.</li>
+    <li><strong>The printer: MapWriter</strong> ✓ 0.5.0, first version (16 November, §7: one layer, an image or a page; 1 test, skipped where render2d is not found: set <code>ETL2D_TEST_RENDER2D</code> to run it: 29). An output node that makes a map instead of a layer: PNG, SVG or PDF by the file's extension, a YSLD style, a basemap, a box and a size (or a scale), later render2d's page (title, legend). The features go to a temporary FlatGeobuf; at the end of the flow, <code>render2d tmp.fgb --style … --bbox … -o map.pdf</code> (the same call as the Map panel of step 4, §9). Its box goes up to the readers (§5); its columns: all at first, later those the YSLD names; a column the style needs and does not receive: red before the run (§4). Then: one map per value of a column (<code>group by: MUNICIPALITY</code>: 19 PDF, the name in the title), and several layers on one map (several inputs: the ports made from the parameters, as the switch).</li>
+    <li><strong>Expressions</strong> ✓ 0.6.0 (§7, 16 November): computed columns in Attributes, <code>= area * 2</code>, with geometry functions (<code>etl2d/expr.py</code>, a parser of our own; 6 tests: 35); next, in the Filter. Then, in order (16 November): geometry validation and repair; the spatial relation (point in polygon, a reference input); dissolve and aggregate (with buffers, convex and concave hulls in a geometry node); change detection; later the skeleton (not in GDAL: PostGIS with SFCGAL, or Voronoi) and topology (lines to polygons).</li>
+    <li>Then, as the real workflows ask: PostGIS in and out with its transactions, a join, a filter by expression, a group-by, DuckDB.</li>
+  </ol>
+</section>
+
+<!-- ======================================================================= -->
+<section id="decisions">
+  <h2>14. Decisions</h2>
+  <div class="scroll"><table>
+    <tr><th>#</th><th>Decision</th><th>Alternative rejected</th></tr>
+    <tr><td>1</td><td>Python all along: the window (imgui-bundle), the engine, the nodes (16 November).</td><td>A C++ base (carto2D's window and map) with Python embedded for the nodes: two compilers (MinGW and MSVC) to reconcile, slower to change.</td></tr>
+    <tr><td>2</td><td>A .venv with python.org's Python; GDAL from Gohlke's wheels.</td><td>conda (another tool to learn); MSYS2's Python (imgui-bundle not packaged there).</td></tr>
+    <tr><td>3</td><td>Features flow one by one (generators), as FME; files only where asked (kept links, fan-out beyond a limit).</td><td>Whole layers between nodes through files: simple, but heavy in memory or on disk for large data, and unnatural for a per-feature Python caller.</td></tr>
+    <tr><td>4</td><td>The structure travels before the data (schema(), then run()).</td><td>The structure known only after a run: mistakes found late.</td></tr>
+    <tr><td>5</td><td>The geometry stays an ogr.Geometry between nodes.</td><td>Shapely or WKB between nodes: a conversion at every step.</td></tr>
+
+    <tr><td>6</td><td>render2d.exe draws the previews, by files; render2d --serve or bindings only if measures ask.</td><td>A map widget in C++ shared with Python.</td></tr>
+    <tr><td>7</td><td>The needs come up from the writers to the readers (a box, columns), each node's <code>needs()</code>; a node without it needs everything (16 November, §5).</td><td>The box copied by hand into the reader; every column always read.</td></tr>
+    <tr><td>8</td><td>The window and the engine in one process, the run in a thread; the graph propagated again at every change (16 November, §11).</td><td>The run in another process (as the command line): the window would not see the counts live; propagation on demand only: mistakes seen late.</td></tr>
+    <tr><td>9</td><td>A Filter's outputs are named by its rules and follow them (renamed: the links follow; removed: they go, said) (16 November, §7).</td><td>Outputs numbered (out1, out2): a rule moved would send its features elsewhere without a word.</td></tr>
+  </table></div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="refs">
+  <h2>15. References</h2>
+  <ul class="refs">
+    <li>Safe Software, FME Desktop documentation: the transformers AttributeManager, Reprojector, Clipper, PythonCaller, the feature and its schema.</li>
+    <li>ComfyUI, its custom nodes: a class with its inputs, outputs and function, found at start in <code>custom_nodes/</code>.</li>
+    <li>Dear ImGui Bundle (pthom/imgui_bundle): Dear ImGui, imgui-node-editor and ImPlot for Python.</li>
+    <li>GDAL's Python API (<code>osgeo.ogr</code>, <code>osgeo.osr</code>), and Christoph Gohlke's geospatial wheels for Windows (cgohlke/geospatial-wheels, the index gisidx.github.io/gwi).</li>
+    <li>carto2D's notes §9 to §11 (navigation), §65 (passwords), §70 (systems); render2d's notes §73 (the network kept out of tests).</li>
+  </ul>
+</section>
+
+</div>
+</body>
+</html>

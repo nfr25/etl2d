@@ -1,0 +1,14 @@
+{
+  "etl2d": 1,
+  "nodes": [
+    {"id": 1, "type": "DirectoryReader", "pos": [40, 80],
+     "params": {"folder": "data", "pattern": "*.shp"}},
+    {"id": 2, "type": "Clipper", "pos": [320, 80],
+     "params": {"box": [148500, 170400, 149300, 171000], "cut": true}},
+    {"id": 3, "type": "Reprojector", "pos": [600, 80],
+     "params": {"target": "EPSG:3812"}},
+    {"id": 4, "type": "Writer", "pos": [880, 80],
+     "params": {"path": "out/grand-place.gpkg", "mode": "replace"}}
+  ],
+  "links": [[1, "features", 2, "features"], [2, "inside", 3, "features"], [3, "features", 4, "features"]]
+}

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>etl2d — Reading the code</title>
+<style>
+:root{
+  --bg:#fbfaf7; --fg:#22252b; --muted:#6b7079; --line:#dedad2; --card:#ffffff;
+  --accent:#b5541c; --accent2:#2b6c8f; --ok:#2f7d4f; --code:#f3f0ea; --life:#fff6e8; --lifeb:#e9c98f;
+  --grid:#e6e2da; --ink:#22252b;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#16181c; --fg:#e4e2dd; --muted:#9a9ea6; --line:#2f333a; --card:#1d2025;
+    --accent:#e08a4f; --accent2:#6fb3d6; --ok:#6cc08f; --code:#23262c; --life:#2a241a; --lifeb:#6e5631;
+    --grid:#2a2e35; --ink:#e4e2dd;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16181c; --fg:#e4e2dd; --muted:#9a9ea6; --line:#2f333a; --card:#1d2025;
+  --accent:#e08a4f; --accent2:#6fb3d6; --ok:#6cc08f; --code:#23262c; --life:#2a241a; --lifeb:#6e5631;
+  --grid:#2a2e35; --ink:#e4e2dd;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 Georgia,"Times New Roman",serif}
+.wrap{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+header h1{font-size:2rem;margin:.2em 0 .1em}
+header p{color:var(--muted);margin:0}
+nav.toc{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:12px 18px;margin:24px 0}
+nav.toc strong{display:block;margin-bottom:4px}
+nav.toc a{display:block;color:var(--accent2);text-decoration:none;padding:1px 0}
+nav.toc a:hover{text-decoration:underline}
+section{margin-top:48px}
+h2{font-size:1.45rem;border-bottom:2px solid var(--line);padding-bottom:4px}
+h3{font-size:1.1rem;margin-top:28px}
+.tag{font:600 .7rem/1 system-ui,sans-serif;background:var(--accent);color:#fff;border-radius:4px;padding:3px 6px;vertical-align:middle;margin-left:6px}
+code,pre,.mono{font-family:"JetBrains Mono",Consolas,Menlo,monospace;font-size:.88em}
+code{background:var(--code);padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}
+pre{background:var(--code);padding:12px 14px;border-radius:6px;overflow-x:auto;line-height:1.45}
+.poterne{background:var(--life);border-left:4px solid var(--lifeb);border-radius:4px;padding:10px 16px;margin:18px 0}
+.poterne > strong:first-child{font:600 .8rem system-ui,sans-serif;text-transform:uppercase;letter-spacing:.04em;color:var(--accent)}
+.poterne p{margin:.4em 0}
+.calc{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 16px;margin:14px 0}
+.sw{display:inline-block;width:.9em;height:.9em;border:1px solid #888;vertical-align:-.1em;margin-right:2px}
+.calc ol{margin:.3em 0;padding-left:1.4em}
+.muted{color:var(--muted)}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.92em}
+th,td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+th{background:var(--code)}
+.scroll{overflow-x:auto}
+@media (max-width:700px){ table{display:block;overflow-x:auto} }
+.mat{display:inline-flex;flex-wrap:wrap;max-width:100%;align-items:center;gap:8px;margin:8px 0;font-family:Consolas,Menlo,monospace;font-size:.9em}
+.mat table{width:auto;margin:0;border-left:2px solid var(--fg);border-right:2px solid var(--fg);border-radius:3px}
+.mat td{border:none;padding:2px 10px;text-align:right}
+.demo{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin:18px 0}
+.demo h4{margin:0 0 8px;font:600 .95rem system-ui,sans-serif}
+.demo canvas{display:block;width:100%;max-width:520px;margin:8px auto;border:1px solid var(--line);border-radius:4px;touch-action:none}
+.ctl{display:flex;flex-wrap:wrap;gap:8px 16px;font:.85rem system-ui,sans-serif;align-items:center}
+.ctl label{display:flex;gap:6px;align-items:center}
+.ctl input[type=number]{width:96px;padding:2px 4px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px}
+.ctl input[type=text]{width:150px;padding:2px 4px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px}
+.ctl button{font:inherit;padding:3px 10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:4px;cursor:pointer}
+.out{font:.85rem/1.55 Consolas,Menlo,monospace;background:var(--code);border-radius:6px;padding:8px 12px;margin-top:8px;white-space:pre-wrap;overflow-x:auto}
+/* Table of contents on the left on wide screens, at the top otherwise. */
+@media (min-width: 1180px){
+  nav.toc{position:fixed;top:0;left:0;bottom:0;width:290px;margin:0;border-radius:0;border-width:0 1px 0 0;
+          overflow-y:auto;padding:18px 16px 40px;font-size:.88rem;line-height:1.35}
+  nav.toc a{padding:2px 6px;border-radius:4px}
+  nav.toc a.current{background:var(--code);color:var(--accent);font-weight:bold}
+  body{padding-left:290px}
+}
+.refs li{margin:6px 0}
+.road li{margin:4px 0}
+.road .now{font-weight:bold;color:var(--accent)}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>etl2d — Reading the code</h1>
+  <p>A guide through the code, for someone who knows what etl2d does and wants to follow how. The notes (<code>notions.en.html</code>) say what and why; this page says where. Every name below is a file and a function you can open. The example all along is the workflow of the notes' §3: a Reader of 200,000 addresses, Attributes, a Clipper on the Grand-Place, a Reprojector to Lambert 2008, a Writer.</p>
+</header>
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <a href="#layers">1. Three layers, one rule</a>
+  <a href="#files">2. The files, and what each holds</a>
+  <a href="#node">3. A node, opened</a>
+  <a href="#load">4. From the JSON file to a Graph</a>
+  <a href="#before">5. Before running: propagate() and plan_needs()</a>
+  <a href="#run">6. The run: generators, then the pull</a>
+  <a href="#onefeature">7. One feature, followed</a>
+  <a href="#window">8. The window: one frame</a>
+  <a href="#threads">9. Threads: the run and render2d</a>
+  <a href="#where">10. Where to look for…</a>
+  <a href="#reading">11. An order to read it in</a>
+</nav>
+
+<!-- ======================================================================= -->
+<section id="layers">
+  <h2>1. Three layers, one rule</h2>
+  <svg viewBox="0 0 760 330" width="100%" role="img" aria-label="The three layers of etl2d" style="max-width:760px">
+    <style>
+      .box{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+      .eng{fill:var(--life);stroke:var(--lifeb)}
+      .t{font:600 14px system-ui,sans-serif;fill:var(--fg)}
+      .s{font:12px Consolas,Menlo,monospace;fill:var(--muted)}
+      .a{stroke:var(--accent2);stroke-width:2;fill:none;marker-end:url(#arr)}
+      .n{font:12px system-ui,sans-serif;fill:var(--accent2)}
+    </style>
+    <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent2)"/></marker></defs>
+    <rect class="box" x="10" y="10" width="340" height="120" rx="8"/>
+    <text class="t" x="24" y="34">The window  etl2d/ui/</text>
+    <text class="s" x="24" y="58">app.py      menus, docking, shortcuts</text>
+    <text class="s" x="24" y="76">state.py    what the window knows</text>
+    <text class="s" x="24" y="94">editor.py   properties.py</text>
+    <text class="s" x="24" y="112">table.py    mapview.py   settings.py</text>
+    <rect class="box" x="410" y="10" width="340" height="120" rx="8"/>
+    <text class="t" x="424" y="34">The command line  __main__.py</text>
+    <text class="s" x="424" y="58">python -m etl2d run job.json</text>
+    <text class="s" x="424" y="76">python -m etl2d nodes</text>
+    <text class="s" x="424" y="94">python -m etl2d ui job.json</text>
+    <text class="s" x="424" y="112">(no command: the window)</text>
+    <rect class="box eng" x="10" y="190" width="460" height="130" rx="8"/>
+    <text class="t" x="24" y="214">The engine  etl2d/</text>
+    <text class="s" x="24" y="238">feature.py  schema.py  needs.py</text>
+    <text class="s" x="24" y="256">registry.py  (finds the nodes)</text>
+    <text class="s" x="24" y="274">graph.py    (the workflow, propagate, plan_needs)</text>
+    <text class="s" x="24" y="292">run.py      (the generators, the pull)</text>
+    <text class="s" x="24" y="310">keep.py     (kept outputs' files)</text>
+    <rect class="box" x="510" y="190" width="240" height="130" rx="8"/>
+    <text class="t" x="524" y="214">The nodes  nodes/</text>
+    <text class="s" x="524" y="238">readers.py  attributes.py</text>
+    <text class="s" x="524" y="256">geometry.py python.py</text>
+    <text class="s" x="524" y="274">writers.py</text>
+    <text class="s" x="524" y="292">+ custom_nodes/ (yours)</text>
+    <text class="s" x="524" y="310">import etl2d's names only</text>
+    <path class="a" d="M180,130 L180,188"/>
+    <path class="a" d="M440,130 L440,188"/>
+    <path class="a" d="M510,262 L474,262"/>
+    <text class="n" x="190" y="165">uses</text>
+    <text class="n" x="450" y="165">uses</text>
+    <text class="n" x="478" y="252">uses</text>
+  </svg>
+  <p><strong>The rule</strong>: the arrows only go down. The engine never imports the window (so <code>python -m etl2d run</code> works without imgui-bundle, and the tests run without a screen). A node imports only what <code>etl2d/__init__.py</code> exports: <code>Input</code>, <code>Output</code>, <code>Param</code>, <code>node</code>, <code>Schema</code>, <code>SchemaError</code>, <code>Feature</code>, <code>Field</code>; it knows nothing of the graph, the window, or other nodes. The engine does not import the nodes either: it finds them at start, in folders (§4).</p>
+  <p>Size, to know what you face: about 3,150 lines. The engine 920, the nodes 680, the window 1,460, the command line 90, plus 22 tests.</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="files">
+  <h2>2. The files, and what each holds</h2>
+  <div class="scroll"><table>
+    <tr><th>File</th><th>Lines</th><th>Holds</th><th>Notes</th></tr>
+    <tr><td><code>etl2d/feature.py</code></td><td>36</td><td><code>Feature</code>: attributes (a dict), geometry (an <code>ogr.Geometry</code>), fid, source. What flows between nodes.</td><td>§6</td></tr>
+    <tr><td><code>etl2d/schema.py</code></td><td>94</td><td><code>Field</code>, <code>Schema</code> (fields, geometry type, crs, count): the structure, without data. <code>schema_of_layer()</code> reads it from an OGR layer.</td><td>§4</td></tr>
+    <tr><td><code>etl2d/needs.py</code></td><td>52</td><td><code>Needs</code> (a box, columns): what a node needs of its input. <code>union()</code>, <code>intersect()</code>.</td><td>§5</td></tr>
+    <tr><td><code>etl2d/registry.py</code></td><td>119</td><td><code>@node</code> marks a class; <code>Registry.load_folder()</code> imports every <code>.py</code> of a folder and keeps the marked classes as <code>NodeSpec</code>s.</td><td>§7, §8</td></tr>
+    <tr><td><code>etl2d/graph.py</code></td><td>333</td><td><code>Graph</code>: nodes (<code>NodeInstance</code>), links (<code>Link</code>), kept outputs. Reading and writing the JSON, editing (add, link, copy), <code>order()</code>, <code>instantiate()</code>, <code>propagate()</code>, <code>plan_needs()</code>.</td><td>§4, §5, §10</td></tr>
+    <tr><td><code>etl2d/run.py</code></td><td>173</td><td><code>run()</code>: builds the chain of generators and pulls it. <code>split()</code> for nodes with several outputs.</td><td>§3, §9</td></tr>
+    <tr><td><code>etl2d/expr.py</code></td><td>520</td><td>The expressions (<code>= area * 2</code>): <code>tokens()</code> reads the text, <code>Parser</code> (Pratt's method: each operator its strength) makes a tree of small functions, <code>FUNCTIONS</code> lists the functions; <code>compile_expr()</code> once, then a call per feature.</td><td>§7</td></tr>
+    <tr><td><code>etl2d/keep.py</code></td><td>99</td><td><code>keeper()</code>: a kept output written to a FlatGeobuf; <code>file_view()</code>: a kept file's system and extent, for the Map.</td><td>§9</td></tr>
+    <tr><td><code>etl2d/__main__.py</code></td><td>89</td><td>The command line.</td><td>§10</td></tr>
+    <tr><td><code>nodes/*.py</code></td><td>960</td><td>The nine nodes: one class each, found as custom ones are.</td><td>§7</td></tr>
+    <tr><td><code>ui/app.py</code></td><td>258</td><td><code>App</code>: the hello_imgui window, menus, shortcuts, docking, the quit question.</td><td>§11</td></tr>
+    <tr><td><code>ui/state.py</code></td><td>230</td><td><code>State</code>: everything the window knows (the graph, the file, the selection, the run). The panels read and change it; nothing else is shared.</td><td>§11</td></tr>
+    <tr><td><code>ui/editor.py</code></td><td>312</td><td>The Graph panel: draws nodes and links with imgui-node-editor, turns mouse gestures into graph edits.</td><td>§11</td></tr>
+    <tr><td><code>ui/properties.py</code></td><td>232</td><td>The Properties panel: one widget per parameter type.</td><td>§11</td></tr>
+    <tr><td><code>ui/table.py</code>, <code>ui/mapview.py</code>, <code>ui/settings.py</code></td><td>426</td><td>The Table and Map panels, the Settings window.</td><td>§9</td></tr>
+  </table></div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="node">
+  <h2>3. A node, opened</h2>
+  <p>A node is a class with three lists and up to three methods. The Clipper (<code>nodes/geometry.py</code>), shortened:</p>
+<pre>@node("Clipper", "Geometry")                 <span class="muted"># registry.py: puts a NodeSpec on the class</span>
+class Clipper:
+    inputs  = [Input("features")]
+    outputs = [Output("inside"), Output("partial"), Output("outside")]
+    params  = [Param("box", "bbox", None), Param("cut", "bool", True)]
+
+    def schema(self, schemas):              <span class="muted"># §4: before any data. In: the inputs' Schemas</span>
+        s = schemas["features"].with_count(None)
+        return {"inside": s, "partial": s, "outside": s}     <span class="muted"># out: one Schema per output</span>
+
+    def needs(self, wanted):                <span class="muted"># §5: in: what the nodes after it need, per output</span>
+        if "outside" in wanted:
+            return {"features": Needs(None, columns)}        <span class="muted"># out: what it needs of its input</span>
+        return {"features": Needs(its_box, columns)}
+
+    def run(self, inputs):                  <span class="muted"># §3: in: one iterator of Features per input</span>
+        def route(f): ...                   <span class="muted">#   "inside", "partial" or "outside"</span>
+        return split(inputs["features"], route, [...], self.ctx.connected)   <span class="muted"># out: one iterator per output</span></pre>
+  <p>Before calling any of the three, <code>Graph.instantiate()</code> (<code>graph.py</code>) makes a fresh object and gives it four attributes:</p>
+  <ul>
+    <li><code>self.params</code>: its parameters, from the JSON file (with the defaults of <code>params</code> for those not given);</li>
+    <li><code>self.schemas_in</code>: its inputs' Schemas (so <code>run()</code> can know the columns: Attributes uses it);</li>
+    <li><code>self.wanted</code>: what the nodes after it need (a reader uses it to ask its source);</li>
+    <li><code>self.ctx</code>: a <code>Context</code>: <code>ctx.path()</code> makes a parameter's relative path start at the workflow's folder, <code>ctx.log()</code> adds a note shown on the node, <code>ctx.connected</code> names its outputs that lead somewhere.</li>
+  </ul>
+  <p>A <strong>reader</strong> has no input: its <code>run({})</code> returns <code>{"features": generator}</code>. A <strong>writer</strong> has no output: its <code>run()</code> returns one generator, which writes a feature each time it is advanced (<code>yield</code> after each), and commits or rolls back in its <code>finally</code>. That is the whole contract; <code>custom_nodes/README.txt</code> shows the smallest node.</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="load">
+  <h2>4. From the JSON file to a Graph</h2>
+<pre>default_registry()                         registry.py
+  └ load_folder("nodes/"), then "custom_nodes/"
+      └ for each .py: importlib runs it; the classes marked by @node become NodeSpecs
+        registry.specs = {"Reader": NodeSpec(...), "Clipper": NodeSpec(...), ...}
+
+Graph.load("job.json", registry)           graph.py
+  └ from_dict(data)
+      ├ for each node:  NodeInstance(id=3, type="Clipper", params={...}, spec=registry.find("Clipper"))
+      │                 a type not found: spec=None, kept and shown in red (its params untouched)
+      ├ for each link:  Link(src=3, src_port="inside", dst=4, dst_port="features"), checked
+      ├ "keep":         graph.keep = {(3, "outside")}
+      └ order()         a loop refused here
+  └ work_dir = job.etl2d/ beside job.json</pre>
+  <p>A <code>NodeInstance</code> is the node <em>in this workflow</em>: its number, parameters, position, and what the last propagation said of it (<code>schemas</code>, <code>given</code>, <code>wanted</code>, <code>asks</code>, <code>error</code>, <code>notes</code>). The <em>object</em> of the node's class is made fresh each time it is needed (§3), and thrown away: it keeps nothing between two calls.</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="before">
+  <h2>5. Before running: propagate() and plan_needs()</h2>
+  <p>Two passes over the nodes, in <code>graph.py</code>. Neither reads a feature.</p>
+  <p><strong><code>propagate()</code></strong> goes down, in <code>order()</code> (each node after those it reads from). For each node: the Schemas of the outputs it is joined to become its <code>given</code>; <code>instantiate(inst).schema(given)</code> gives its <code>schemas</code>. A <code>SchemaError</code> becomes its <code>error</code>, and the nodes after it get "waits for #3 Clipper".</p>
+  <p><strong><code>plan_needs()</code></strong> goes up, in reverse order. For each node: what its consumers <code>asks</code> becomes its <code>wanted</code> (several consumers: <code>union()</code>; a kept output: everything); <code>needs(wanted)</code> gives its <code>asks</code>.</p>
+  <div class="calc"><strong>On the example</strong> (what each NodeInstance holds after the two passes)<ol>
+    <li>propagate, down: #1 Reader <code>schemas = {features: 3 columns, Point, EPSG:31370, 200,000}</code> → #2 Attributes drops PARENTID, renames STRNAMEFRE: <code>2 columns</code> + <code>source</code> added = 3 → #3 Clipper: the same on its three outputs → #4 Reprojector: <code>EPSG:3812</code> → #5 Writer: no output, a note "writes 3 columns…".</li>
+    <li>plan_needs, up: #5 Writer asks everything → #4 Reprojector's <code>wanted</code> = everything, it asks the same → #3 Clipper's <code>wanted = {inside: everything}</code> (only inside is joined): it <code>asks</code> its box, all columns → #2 Attributes knows <code>source</code> is its own and PARENTID is dropped: it asks the box and <code>STRNAMEFRE, POLICENUM</code> → #1 Reader's <code>wanted</code> = box 148500 170400 149300 171000, 2 of 3 columns: the line "asks:" on the node.</li>
+  </ol></div>
+  <p>The window calls both after every change (<code>State.refresh()</code>); the command line once, before printing each node; <code>run()</code> once more at its start.</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="run">
+  <h2>6. The run: generators, then the pull</h2>
+  <p><code>run()</code> (<code>run.py</code>) has two halves, and the key to it is that <strong>the first half runs nothing</strong>.</p>
+  <p><strong>First half: build.</strong> For each node in order: <code>obj = instantiate(inst)</code>; its inputs are taken from <code>outputs[(src, port)]</code> (the iterators made by the nodes before it); <code>obj.run(inputs)</code> returns generators. A Python generator does nothing until asked for its next value: calling <code>run()</code> on all five nodes takes microseconds and reads no feature. Around each output, two wrappers: <code>_counted()</code> (the green counts) and <code>guarded()</code> (an exception becomes a <code>RunError</code> naming the node). An output joined to two nodes is split by <code>itertools.tee</code>; a kept output gets one more consumer, <code>keeper()</code>, added to the <code>sinks</code>. A writer's generator goes to <code>sinks</code>.</p>
+  <p><strong>Second half: pull.</strong></p>
+<pre>while active:                      <span class="muted"># the sinks not finished yet</span>
+    if stop.is_set(): raise RunError("stopped")
+    for sink in active:
+        next(sink)                 <span class="muted"># one feature through, from the reader to this writer</span></pre>
+  <p>Each <code>next()</code> on a writer asks its input for one feature, which asks its own input, and so on up to the reader, which asks OGR. Several sinks are pulled in turn, so the queues of a <code>tee</code> stay short. When a sink is exhausted (<code>StopIteration</code>), it has committed. On an error, the other sinks are <code>close()</code>d: their <code>finally</code> rolls back.</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="onefeature">
+  <h2>7. One feature, followed</h2>
+  <p>One <code>next()</code> on the Writer, on the example; read it from top to bottom, then back up:</p>
+<pre>run.run          next(writer)
+writers.py         write(): for feat in inputs["features"]      → asks the Reprojector
+geometry.py          Reprojector gen: for f in inputs[...]      → asks the Clipper
+run.py                 split().pull("inside"): queue empty      → reads from its input
+attributes.py            Attributes gen: for f in inputs[...]   → asks the Reader
+readers.py                 features_of(): for f in lyr          → OGR: the next row in the box
+                           yield Feature({"STRNAMEFRE": "rue au Beurre", "POLICENUM": "12"}, POINT, 2, "addr.gpkg")
+attributes.py            f.attributes = {"street": "rue au Beurre", "POLICENUM": "12", "source": "UrbIS 2026"}; yield f
+run.py                 route(f) = "inside": into the inside queue; pull("inside") yields it
+geometry.py          f.geometry.Transform(31370 → 3812); yield f
+writers.py         lyr.CreateFeature(...); yield        ← next() returns here</pre>
+  <p>Only one feature is in flight at a time (plus the few waiting in a queue of <code>split()</code> or <code>tee</code>): 200,000 features or 20 million, the memory is the same. A feature routed to "partial" while "inside" asks waits in the partial queue, if partial is joined; else it is dropped (§9).</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="window">
+  <h2>8. The window: one frame</h2>
+  <p>hello_imgui calls the program about 60 times a second (fewer when nothing moves). Each frame, in <code>app.py</code>:</p>
+<pre>App.menus()            File, Edit, Run, Window; the file name and "running…" at the right
+App.every_frame()      the Table to the front if another kept output was chosen;
+                       shortcuts() (Ctrl+S, Ctrl+C, F5…); the quit question; the Settings window
+then each panel's function, for the panels shown:
+  _library(state)        Nodes: a click → editor.add_node()
+  editor.draw(state)     Graph: state.refresh() first, then nodes, links, gestures
+  properties.draw(state) Properties of state.selected
+  map.draw(state)        Map of state.looked
+  table.draw(state)      Table of state.looked
+  _log(state)            Log: state.log</pre>
+  <p>Dear ImGui is "immediate": nothing is kept on the screen between two frames; every panel is drawn again from <code>State</code> each time. So a change is simply: change <code>State</code> (or <code>state.graph</code>), and set <code>state.dirty_structure = True</code> when the structure may have changed; at the next frame <code>editor.draw()</code> calls <code>state.refresh()</code> (<code>propagate()</code> and <code>plan_needs()</code>) and every panel shows the new state. A parameter typed in Properties, a link dragged in the Graph, a node pasted: the same path.</p>
+  <p>In <code>editor.draw()</code>, the order matters to imgui-node-editor: <code>ed.begin()</code>; each node (<code>_node()</code>: <code>begin_node</code>, its pins, its text, <code>end_node</code>, then its title band drawn behind); each link; then the gestures: <code>begin_create()</code> (a link dragged: green or red, accepted or refused by <code>Graph.can_link()</code>), <code>begin_delete()</code> (Delete), the selection, the right-click menus; <code>ed.end()</code>. Pins are numbered <code>node×1000 + 1 + i</code> for inputs and <code>node×1000 + 500 + i</code> for outputs: <code>port_of()</code> turns a pin number back into (node, port).</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="threads">
+  <h2>9. Threads: the run and render2d</h2>
+  <p>Two things would freeze the window if done in a frame, so each goes to a thread:</p>
+  <ul>
+    <li><strong>The run</strong> (<code>State.start_run()</code>): a thread calls <code>run(graph, live=state.live, stop=state.stop)</code>. <code>run()</code> fills <code>live</code> at its start with each node's counters (lists of one int, changed in place by <code>_counted()</code>); <code>editor._node()</code> reads them each frame: the green counts. Esc sets <code>state.stop</code>, checked by the pull loop between two features. While <code>state.running</code>, the editing is refused (no link, no delete, Properties greyed): the graph is in use.</li>
+    <li><strong>render2d</strong> (<code>MapView.start()</code>): a thread runs <code>render2d.exe</code> (<code>subprocess</code>), reads the PNG it wrote, and leaves its bytes in <code>self.done</code>. The next frame, in the window's thread (the only one allowed to touch the GPU), turns them into a texture. Between two drawings, <code>MapView.draw()</code> moves and stretches the last texture with the mouse.</li>
+  </ul>
+  <p>Python runs one thread at a time (the GIL): the window and the run share it. That is why a run in the window takes longer than from the command line (§11 of the notes: 2.07 s against 1.15 s).</p>
+</section>
+
+<!-- ======================================================================= -->
+<section id="where">
+  <h2>10. Where to look for…</h2>
+  <div class="scroll"><table>
+    <tr><th>I want to…</th><th>Look in</th></tr>
+    <tr><td>make a new node</td><td>a <code>.py</code> in <code>custom_nodes/</code> (its README); the seven of <code>nodes/</code> as examples</td></tr>
+    <tr><td>a new function in the expressions</td><td><code>etl2d/expr.py</code>: one line in <code>FUNCTIONS</code> (its name, its numbers of arguments, the Python function, whether it reads the geometry); a test in <code>tests/test_expr.py</code></td></tr>
+    <tr><td>a new kind of parameter (a colour, a list of files…)</td><td><code>registry.Param</code> (its <code>type</code>), <code>ui/properties.py</code> <code>_param()</code> (its widget)</td></tr>
+    <tr><td>change what a node shows in the graph</td><td><code>ui/editor.py</code> <code>_node()</code>; colours at the top (<code>BANDS</code>)</td></tr>
+    <tr><td>change the JSON file's format</td><td><code>graph.py</code> <code>from_dict()</code> and <code>to_dict()</code> (unknown keys are written back as they were: <code>raw</code>)</td></tr>
+    <tr><td>see why a reader asks what it asks</td><td>each node's <code>needs()</code>; <code>graph.plan_needs()</code>; <code>readers.asked()</code> and <code>features_of()</code></td></tr>
+    <tr><td>see how the writers stay safe on failure</td><td><code>nodes/writers.py</code>: <code>gen_transactional()</code>, <code>gen_files()</code>, their <code>finally</code></td></tr>
+    <tr><td>a node with several outputs</td><td><code>run.split()</code>, used by the Clipper and the Filter</td></tr>
+    <tr><td>a node whose outputs depend on its parameters</td><td>a static <code>outputs_for(params)</code> on its class (<code>nodes/filter.py</code>); <code>NodeSpec.output_names()</code>, <code>NodeInstance.outputs()</code>; <code>Graph.rename_output()</code>, <code>prune_ports()</code> (called by <code>State.refresh()</code>)</td></tr>
+    <tr><td>the kept files, the Table, the Map</td><td><code>keep.py</code>; <code>run.run()</code> (the "kept" consumer); <code>ui/table.py</code>; <code>ui/mapview.py</code></td></tr>
+    <tr><td>a menu, a shortcut, a panel</td><td><code>ui/app.py</code>: <code>menus()</code>, <code>shortcuts()</code>, <code>_runner_params()</code> (the panels and where they dock)</td></tr>
+    <tr><td>undo and redo</td><td><code>State.track()</code> (called by <code>App.every_frame()</code> when no gesture is going on), <code>undo()</code>, <code>redo()</code>, <code>_restore()</code></td></tr>
+    <tr><td>copy and paste</td><td><code>graph.extract()</code> and <code>insert()</code>; <code>State.copy()</code>, <code>paste()</code></td></tr>
+    <tr><td>test something without the window</td><td><code>tests/test_engine.py</code>: each test builds a small workflow with <code>workflow(nodes, links)</code> and small files with <code>make_layer()</code> (<code>conftest.py</code>)</td></tr>
+  </table></div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="reading">
+  <h2>11. An order to read it in</h2>
+  <ol class="road">
+    <li><code>etl2d/feature.py</code>, <code>schema.py</code>, <code>needs.py</code>: the three small data types (20 minutes).</li>
+    <li><code>nodes/attributes.py</code>: the simplest node with an input, its three methods; then <code>nodes/geometry.py</code>, the Clipper, and <code>nodes/filter.py</code>, the Filter (its rules made once into small functions, then <code>route()</code>).</li>
+    <li><code>etl2d/registry.py</code>: how <code>@node</code> and the folders make the library.</li>
+    <li><code>etl2d/graph.py</code>, <code>propagate()</code> and <code>plan_needs()</code>, with §5 of this page beside.</li>
+    <li><code>etl2d/run.py</code>, <code>run()</code>, with §7 of this page beside: the heart. Try it: a <code>print()</code> in Attributes' <code>gen()</code> and in the Writer's <code>write()</code>, then <code>run.bat run</code> on a small file: the prints alternate, one feature at a time.</li>
+    <li><code>nodes/readers.py</code> and <code>nodes/writers.py</code>: the parts that touch GDAL.</li>
+    <li><code>ui/state.py</code>, then <code>ui/app.py</code>, then <code>ui/editor.py</code>: the window, once the engine is clear.</li>
+  </ol>
+</section>
+
+</div>
+<script>
+// The table of contents follows the reading on wide screens.
+(function(){
+  const links=[...document.querySelectorAll('nav.toc a')];
+  const secs=links.map(a=>document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  function on(){let cur=secs[0];for(const s of secs){if(s.getBoundingClientRect().top<120)cur=s;}
+    links.forEach(a=>a.classList.toggle('current',a.getAttribute('href')==='#'+cur.id));}
+  addEventListener('scroll',on,{passive:true});on();
+})();
+</script>
+</body>
+</html>
