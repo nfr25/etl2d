@@ -118,6 +118,11 @@ def _param(state: State, inst, p) -> bool:
         changed, nv = _names(inst, list(v or []))
     elif t == "rules":
         changed, nv = _rules(state, inst, [dict(r) for r in (v or [])])
+    elif t == "layers":
+        rows = inst.spec.cls.layers_of(inst.params) if hasattr(inst.spec.cls, "layers_of") else list(v or [])
+        changed, nv, typed = _layers(state, inst, [dict(r) for r in rows])
+        if typed and not changed:
+            inst.params[p.name] = nv
     else:
         imgui.text_colored(GREY, f"{v!r} (no widget for '{t}')")
         return False
@@ -238,7 +243,8 @@ def _rows(rows: list, keys: list) -> tuple[bool, list, bool]:
 
 _renaming: dict = {}   # (node, row) -> the rule's name when its field was entered
 
-OPS = ("=", "!=", "<", "<=", ">", ">=", "in", "not in", "contains", "starts with", "is empty", "is not empty")
+OPS = ("=", "!=", "<", "<=", ">", ">=", "in", "not in", "contains", "starts with", "is empty", "is not empty",
+       "expression")
 
 
 def _rules(state: State, inst, rules: list) -> tuple[bool, list]:
@@ -289,15 +295,17 @@ def _rules(state: State, inst, rules: list) -> tuple[bool, list]:
             action = ("x", i)
         w = imgui.get_content_region_avail().x
         sp = imgui.get_style().item_spacing.x
-        imgui.set_next_item_width(w * 0.38)
-        col = r.get("column", "")
-        items = cols if col in cols or not col else cols + [col]   # a column gone: kept, shown (red on the node)
-        if imgui.begin_combo("##col", col or "(column)"):
-            for name_ in items:
-                if imgui.selectable(name_, name_ == col)[0]:
-                    r["column"], changed = name_, True
-            imgui.end_combo()
-        imgui.same_line()
+        is_expr = r.get("op") == "expression"
+        if not is_expr:   # an expression names its columns itself: no column to choose
+            imgui.set_next_item_width(w * 0.38)
+            col = r.get("column", "")
+            items = cols if col in cols or not col else cols + [col]   # a column gone: kept, shown (red on the node)
+            if imgui.begin_combo("##col", col or "(column)"):
+                for name_ in items:
+                    if imgui.selectable(name_, name_ == col)[0]:
+                        r["column"], changed = name_, True
+                imgui.end_combo()
+            imgui.same_line()
         imgui.set_next_item_width(w * 0.27)
         op = r.get("op", "=")
         k = OPS.index(op) if op in OPS else 0
@@ -305,12 +313,18 @@ def _rules(state: State, inst, rules: list) -> tuple[bool, list]:
         if c:
             r["op"], changed = OPS[k], True
         if r.get("op") not in ("is empty", "is not empty"):
-            imgui.same_line()
-            imgui.set_next_item_width(w * 0.35 - 2 * sp)
+            if is_expr:   # the expression on the rest of the line: it is longer than a value
+                imgui.same_line()
+                imgui.set_next_item_width(-1)
+            else:
+                imgui.same_line()
+                imgui.set_next_item_width(w * 0.35 - 2 * sp)
             c, val = imgui.input_text("##val", str(r.get("value", "") if r.get("value") is not None else ""))
             if c:
                 r["value"], typed = val, True
             changed |= imgui.is_item_deactivated_after_edit()
+            if is_expr:
+                imgui.set_item_tooltip("true or false: npoints() > 500, area() > 200 AND type = 'maison' (notes §7)")
         imgui.dummy(imgui.ImVec2(0, 4))
         imgui.pop_id()
     imgui.text_colored(GREY, "else: what no rule takes")
@@ -332,6 +346,111 @@ def _rules(state: State, inst, rules: list) -> tuple[bool, list]:
     if typed and not changed:   # kept without propagating yet (see _typed)
         inst.params["rules"] = rules
     return changed, rules
+
+
+COLOURS = ("none", "categorize", "graduate")
+METHODS = ("equal", "quantiles", "natural")
+
+
+def _layers(state: State, inst, layers: list) -> tuple[bool, list, bool]:
+    """The MapWriter's layers (§7), top first (drawn on top): name (its input, its legend line) with
+    ^ v x; its style; its colour by a column (categorize, graduate: classes, method)."""
+    changed, typed, action = False, False, None
+    for i, lay in enumerate(layers):
+        imgui.push_id(i)
+        bw = imgui.calc_text_size("^").x + imgui.get_style().frame_padding.x * 2
+        imgui.set_next_item_width(imgui.get_content_region_avail().x - bw * 3 - 4 - imgui.get_style().item_spacing.x)
+        c, name = imgui.input_text("##name", str(lay.get("name", "")))
+        imgui.set_item_tooltip("the layer's name: its input, and its line in the legend")
+        if imgui.is_item_activated():
+            _renaming[(inst.id, "layer", i)] = str(lay.get("name", ""))
+        if c:
+            lay["name"], typed = name, True
+            lay.pop("legend", None)   # a layer of 0.5 or 0.6 renamed: its name is now its legend
+        if imgui.is_item_deactivated():
+            old = _renaming.pop((inst.id, "layer", i), None)
+            new = str(lay.get("name", ""))
+            if old is not None and new != old:
+                others = {str(x.get("name")) for j, x in enumerate(layers) if j != i}
+                if new in others or not new.strip():
+                    lay["name"] = old
+                    state.say("error", f"#{inst.id} MapWriter: '{new}' is " +
+                              ("taken by another layer" if new.strip() else "empty") + f"; the layer keeps '{old}'")
+                else:   # its input renamed: its link follows
+                    state.graph.rename_input(inst.id, old, new)
+                changed = True
+        imgui.same_line()
+        if imgui.small_button("^") and i > 0:
+            action = ("up", i)
+        imgui.same_line(0, 2)
+        if imgui.small_button("v") and i < len(layers) - 1:
+            action = ("down", i)
+        imgui.same_line(0, 2)
+        if imgui.small_button("x") and len(layers) > 1:   # a map keeps one layer at least
+            action = ("x", i)
+        w = imgui.get_content_region_avail().x
+        colour = lay.get("colour", "none") or "none"
+        imgui.set_next_item_width(w * 0.34)
+        k = COLOURS.index(colour) if colour in COLOURS else 0
+        c, k = imgui.combo("##colour", k, list(COLOURS))
+        imgui.set_item_tooltip("none: its style (or render2d's); categorize: a colour per value; "
+                               "graduate: classes of a number, light to dark")
+        if c:
+            lay["colour"], changed = COLOURS[k], True
+        imgui.same_line()
+        if (lay.get("colour", "none") or "none") == "none":
+            imgui.set_next_item_width(-imgui.get_frame_height() * 1.6)
+            c, st = imgui.input_text("##style", str(lay.get("style", "") or ""))
+            imgui.set_item_tooltip("a YSLD style; empty: render2d's built-in one")
+            if c:
+                lay["style"], typed = st, True
+            changed |= imgui.is_item_deactivated_after_edit()
+            imgui.same_line()
+            if imgui.button("..."):
+                files = pfd.open_file("A style", str(state.graph.base_dir), ["YSLD styles", "*.yaml *.yml", "All files", "*"]).result()
+                if files:
+                    lay["style"], changed = _relative(state, files[0]), True
+        else:
+            s = inst.given.get(str(lay.get("name", "")))
+            cols = s.names() if s is not None else []
+            col = lay.get("column", "")
+            imgui.set_next_item_width(-1)
+            if imgui.begin_combo("##col", col or ("(column)" if cols else "(join it first)")):
+                for c_ in cols:
+                    if imgui.selectable(c_, c_ == col)[0]:
+                        lay["column"], changed = c_, True
+                imgui.end_combo()
+            if lay.get("colour") == "graduate":
+                imgui.set_next_item_width(w * 0.34)
+                c, n = imgui.input_int("classes##n", int(lay.get("classes", 5) or 5))
+                if c:
+                    lay["classes"], changed = max(2, min(10, n)), True
+                imgui.same_line()
+                imgui.set_next_item_width(-1)
+                m = lay.get("method", "equal") or "equal"
+                k = METHODS.index(m) if m in METHODS else 0
+                c, k = imgui.combo("##method", k, list(METHODS))
+                if c:
+                    lay["method"], changed = METHODS[k], True
+        imgui.dummy(imgui.ImVec2(0, 4))
+        imgui.pop_id()
+    imgui.text_colored(GREY, "the top of the list is drawn on top")
+    if action is not None:
+        what, i = action
+        if what == "x":
+            layers.pop(i)   # its link goes at the refresh, said in the log
+        else:
+            j = i - 1 if what == "up" else i + 1
+            layers[i], layers[j] = layers[j], layers[i]
+        changed = True
+    if imgui.small_button("+ layer"):
+        names = {str(x.get("name")) for x in layers}
+        n = len(layers) + 1
+        while f"layer{n}" in names:
+            n += 1
+        layers.append({"name": f"layer{n}"})
+        changed = True
+    return changed, layers, typed
 
 
 def _names(inst, names: list) -> tuple[bool, list]:

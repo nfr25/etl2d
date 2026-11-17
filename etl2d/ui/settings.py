@@ -21,7 +21,20 @@ class Settings:
     def __init__(self):
         self.render2d = ""   # render2d.exe; empty: looked for on the PATH
         self.basemap = ""    # a SOURCE drawn under the kept file (basemaps/urbis-ortho-2024.xml...)
+        self.recent: list[str] = []   # the workflows opened or saved lately, the last first (File > Open recent)
         self.load()
+
+    RECENT = 10
+
+    def remember(self, path) -> None:
+        """A workflow opened or saved: at the top of File > Open recent."""
+        p = str(Path(path).resolve())
+        self.recent = [p] + [r for r in self.recent if r.lower() != p.lower()][: self.RECENT - 1]
+        self.save()
+
+    def forget(self, path) -> None:
+        self.recent = [r for r in self.recent if r != str(path)]
+        self.save()
 
     def path(self) -> Path:
         return folder() / "settings.json"
@@ -31,14 +44,15 @@ class Settings:
             d = json.loads(self.path().read_text(encoding="utf-8"))
             self.render2d = str(d.get("render2d", ""))
             self.basemap = str(d.get("basemap", ""))
+            self.recent = [str(r) for r in d.get("recent", []) if r][: self.RECENT]
         except (OSError, ValueError):
             pass
 
     def save(self) -> None:
         try:
             self.path().parent.mkdir(parents=True, exist_ok=True)
-            self.path().write_text(json.dumps({"render2d": self.render2d, "basemap": self.basemap}, indent=1),
-                                   encoding="utf-8")
+            self.path().write_text(json.dumps({"render2d": self.render2d, "basemap": self.basemap,
+                                               "recent": self.recent}, indent=1), encoding="utf-8")
         except OSError:
             pass
 

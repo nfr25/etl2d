@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from etl2d import Input, Output, Param, SchemaError, node
+from etl2d.expr import ExprError, compile_expr
 from etl2d.needs import Needs
 from etl2d.run import split
 
-OPS = ("=", "!=", "<", "<=", ">", ">=", "in", "not in", "contains", "starts with", "is empty", "is not empty")
+OPS = ("=", "!=", "<", "<=", ">", ">=", "in", "not in", "contains", "starts with", "is empty", "is not empty",
+       "expression")
 NO_VALUE = ("is empty", "is not empty")
 NUMBERS = ("Integer", "Integer64", "Real")
 
@@ -64,7 +66,9 @@ class Filter:
 
     A rule: a name (its output's), a column, a comparison, a value. Comparisons:
     = != < <= > >= (as numbers on a column of numbers), in / not in (a list, with
-    commas), contains / starts with (capitals ignored), is empty / is not empty.
+    commas), contains / starts with (capitals ignored), is empty / is not empty;
+    expression: the value is an expression, true or false (npoints() > 500,
+    area() > 200 AND type = 'maison'), its column unused.
     An empty value (NULL) makes every comparison false but 'is empty'.
     """
 
@@ -77,8 +81,16 @@ class Filter:
         """§7: the outputs from the parameters: one per rule, in their order, then 'else'."""
         return [str(r.get("name", "")) for r in (params.get("rules") or [])] + ["else"]
 
+    def _expression(self, r, names, name):
+        text = str(r.get("value", "") or "")
+        text = text.replace("=", " ", 1) if text.lstrip().startswith("=") else text   # '=' allowed, as in Attributes
+        try:
+            return compile_expr(text, names)
+        except ExprError as e:
+            raise SchemaError(f"rule '{name}': {e}")
+
     def _rules(self, schema):
-        """[(name, column, test)], checked against the structure received (§4)."""
+        """[(name, test of (attributes, geometry))], checked against the structure received (§4)."""
         rules = self.params.get("rules") or []
         seen, out = set(), []
         types = {f.name: f.type for f in schema.fields}
@@ -90,20 +102,25 @@ class Filter:
                 raise SchemaError(f"two outputs named '{name}' (rule {i})")
             seen.add(name)
             col, op = r.get("column", ""), r.get("op", "=")
+            if op == "expression":   # a whole expression: several columns, the geometry
+                e = self._expression(r, list(types), name)
+                out.append((name, lambda a, g, e=e: bool(e(a, g))))
+                continue
             if col not in types:
                 raise SchemaError(f"rule '{name}': no column '{col}' arrives"
                                   + (f" (it has: {', '.join(types)})" if types else ""))
             if op not in OPS:
                 raise SchemaError(f"rule '{name}': no comparison '{op}'")
             numeric = types[col] in NUMBERS and op not in ("contains", "starts with")
-            out.append((name, col, _test(op, r.get("value", ""), numeric, name)))
+            test = _test(op, r.get("value", ""), numeric, name)
+            out.append((name, lambda a, g, col=col, test=test: test(a.get(col))))
         return out
 
     def schema(self, schemas):
         s = schemas["features"]
         rules = self._rules(s)
         s = s.with_count(None)   # how many go where is known only by running
-        return {name: s for name, _, _ in rules} | {"else": s}
+        return {name: s for name, _ in rules} | {"else": s}
 
     def needs(self, wanted):
         """§5: its rules' columns, and what the nodes after it need of its outputs together."""
@@ -112,7 +129,13 @@ class Filter:
         together = None
         for w in wanted.values():
             together = w if together is None else together.union(w)
-        read = {str(r.get("column", "")) for r in (self.params.get("rules") or [])}
+        read = set()
+        names = self.schemas_in["features"].names() if "features" in self.schemas_in else None
+        for r in self.params.get("rules") or []:
+            if r.get("op") == "expression":
+                read |= self._expression(r, names, r.get("name", "")).columns
+            else:
+                read.add(str(r.get("column", "")))
         cols = None if together.columns is None else together.columns | read
         return {"features": Needs(together.bbox, cols)}
 
@@ -120,10 +143,10 @@ class Filter:
         rules = self._rules(self.schemas_in["features"])
 
         def route(f):
-            a = f.attributes
-            for name, col, test in rules:
-                if test(a.get(col)):
+            a, g = f.attributes, f.geometry
+            for name, test in rules:
+                if test(a, g):
                     return name
             return "else"
 
-        return split(inputs["features"], route, [n for n, _, _ in rules] + ["else"], self.ctx.connected)
+        return split(inputs["features"], route, [n for n, _ in rules] + ["else"], self.ctx.connected)

@@ -618,3 +618,54 @@ def test_mapwriter(tmp_path, workflow):
     nodes[2]["params"].update(path="out/b.png", page="none")   # two maps into one file: refused
     g = workflow(nodes, [[1, "features", 2, "features"], [1, "features", 3, "features"]])
     assert not g.propagate() and "too" in g.nodes[3].error
+
+
+def test_filter_expression(tmp_path, workflow):
+    """§7: a rule that is an expression: several columns, the geometry; its columns asked to the reader."""
+    buildings(tmp_path)
+    rules = [{"name": "big_house", "op": "expression", "value": "area >= 100 AND starts(type, 'maison')"},
+             {"name": "point", "op": "expression", "value": "= geomtype() = 'Point' AND area IS NULL"}]
+    g = workflow([{"id": 1, "type": "Reader", "params": {"source": "buildings.gpkg"}},
+                  {"id": 2, "type": "Filter", "params": {"rules": rules}},
+                  {"id": 3, "type": "Attributes", "params": {"columns": [{"from": "area", "keep": False},
+                                                                         {"from": "type", "keep": False}]}},
+                  {"id": 4, "type": "Writer", "params": {"path": "big.gpkg"}}],
+                 [[1, "features", 2, "features"], [2, "big_house", 3, "features"], [3, "features", 4, "features"]])
+    assert g.propagate(), [n.error for n in g.nodes.values()]
+    g.plan_needs()
+    assert g.nodes[1].wanted["features"].columns == frozenset({"NAME", "area", "type"})
+    r = run(g)
+    assert r.ok, r.error
+    assert r.stats[2].features_out == {"big_house": 1}     # 120 m² maison; "Maison de maître" has 50 m²
+    assert [a["NAME"] for _, a in read_all(tmp_path / "big.gpkg")] == ["b1"]
+    g.nodes[2].params["rules"] = [{"name": "x", "op": "expression", "value": "area >"}]
+    assert not g.propagate() and "rule 'x': position 7: a value expected" in g.nodes[2].error
+
+
+def test_mapwriter_layers_ports(tmp_path, workflow):
+    """§7, decision 10: one input per layer; renamed, its link follows; removed, its link goes;
+    a workflow of 0.5 (no layers, its style and name) read as one layer 'features'."""
+    buildings(tmp_path)
+    fake = tmp_path / "render2d"
+    fake.write_text("")   # found (a file): enough to see the structure; nothing is drawn here
+    rules = [{"name": "small", "column": "area", "op": "<", "value": "50"}]
+    g = workflow([{"id": 1, "type": "Reader", "params": {"source": "buildings.gpkg"}},
+                  {"id": 2, "type": "Filter", "params": {"rules": rules}},
+                  {"id": 3, "type": "MapWriter", "params": {"path": "m.png", "render2d": str(fake), "layers": [
+                      {"name": "large"}, {"name": "small", "colour": "categorize", "column": "type"}]}}],
+                 [[1, "features", 2, "features"], [2, "else", 3, "large"], [2, "small", 3, "small"]])
+    assert g.nodes[3].inputs() == ["large", "small"]
+    assert g.propagate(), [n.error for n in g.nodes.values()]
+    g.nodes[3].params["layers"][1]["column"] = "nowhere"
+    assert not g.propagate() and "no column 'nowhere' arrives to colour by" in g.nodes[3].error
+    g.nodes[3].params["layers"][1].update(name="tiny", column="type")
+    g.rename_input(3, "small", "tiny")
+    assert g.propagate() and any(l.dst_port == "tiny" for l in g.inputs_of(3))
+    g.nodes[3].params["layers"] = [{"name": "large"}]
+    assert len(g.prune_ports()) == 1 and [l.dst_port for l in g.inputs_of(3)] == ["large"]
+
+    old = workflow([{"id": 1, "type": "Reader", "params": {"source": "buildings.gpkg"}},
+                    {"id": 2, "type": "MapWriter", "params": {"path": "m.png", "render2d": str(fake),
+                                                              "style": "", "name": "my buildings"}}],
+                   [[1, "features", 2, "features"]])
+    assert old.nodes[2].inputs() == ["features"] and old.propagate()

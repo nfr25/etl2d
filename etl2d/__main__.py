@@ -21,11 +21,15 @@ def main(argv=None) -> int:
     ap.add_argument("--nodes", action="append", default=[], help="one more folder of custom nodes")
     sub = ap.add_subparsers(dest="cmd")
     r = sub.add_parser("run", help="runs a workflow file")
-    r.add_argument("workflow")
+    r.add_argument("workflow", nargs="?")
     sub.add_parser("nodes", help="lists the node types found")
     u = sub.add_parser("ui", help="the window (the default, with no command)")
     u.add_argument("workflow", nargs="?")
     args = ap.parse_args(argv)
+    if args.cmd == "run" and not args.workflow:
+        print("run needs a workflow: run.bat run job.json (run.bat alone, or run.bat ui, opens the window)",
+              file=sys.stderr)
+        return 2
 
     reg = default_registry([Path(p) for p in args.nodes])
     for e in reg.errors:

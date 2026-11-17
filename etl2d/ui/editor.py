@@ -22,6 +22,8 @@ BANDS = {"Readers": (0.20, 0.42, 0.30), "Writers": (0.47, 0.27, 0.22), "Geometry
 BAND_OTHER = (0.32, 0.32, 0.36)   # custom categories
 FLASH = 0.8   # seconds a new link stays bright: the moment of joining, seen
 _flash: dict = {}   # Link -> time it was made
+_rights: dict = {}  # node -> the right edge of its widest line at the last frame, its outputs not counted:
+                    # where its output ports go (at the edge, not just after their name)
 
 # A link's id must stay the same from frame to frame: one number per link, kept.
 _link_ids: dict[Link, int] = {}
@@ -52,8 +54,8 @@ def port_of(state: State, pin: int):
     if k >= 500:
         outs = inst.outputs()
         return (nid, outs[k - 500], "out") if k - 500 < len(outs) else None
-    ins = inst.spec.inputs
-    return (nid, ins[k - 1].name, "in") if 0 <= k - 1 < len(ins) else None
+    ins = inst.inputs()
+    return (nid, ins[k - 1], "in") if 0 <= k - 1 < len(ins) else None
 
 
 def sync_positions(state: State) -> None:
@@ -71,23 +73,32 @@ def _node(state: State, inst) -> None:
     imgui.same_line()
     imgui.text_colored(imgui.ImVec4(0.85, 0.85, 0.85, 1.0), f"#{inst.id}")
     title_bottom = imgui.get_item_rect_max().y
+    rights = [imgui.get_item_rect_max().x]   # the right edge of each line but the outputs (see _rights)
     imgui.dummy(imgui.ImVec2(0, 2))
     if inst.spec is None:
         imgui.text_colored(RED, "unknown node type")
     else:
         # Inputs in a column at the left, outputs at the right: the links come in and go out.
         imgui.begin_group()
-        for i, p in enumerate(inst.spec.inputs):
+        inputs = inst.inputs()
+        for i, name in enumerate(inputs):
             ed.begin_pin(ed.PinId(pin_in(inst.id, i)), ed.PinKind.input)
             ed.pin_pivot_alignment(imgui.ImVec2(0.0, 0.5))
-            imgui.text(f"o {p.name}")
+            imgui.text(f"o {name}")
             ed.end_pin()
         imgui.end_group()
+        if inputs:
+            rights.append(imgui.get_item_rect_max().x)
         outputs = inst.outputs()
-        if inst.spec.inputs and outputs:
+        if inputs and outputs:
             imgui.same_line(0, 40)
-        imgui.begin_group()
         width = max((imgui.calc_text_size(f"{name} o").x for name in outputs), default=0)
+        # The outputs against the right edge, as wide as the widest other line was at the last frame.
+        shift = _rights.get(inst.id, 0) - (imgui.get_cursor_screen_pos().x + width)
+        if outputs and shift > 1:
+            imgui.dummy(imgui.ImVec2(shift, 0))
+            imgui.same_line(0, 0)
+        imgui.begin_group()
         for i, name in enumerate(outputs):
             label = f"{name} o"
             pad = width - imgui.calc_text_size(label).x
@@ -103,26 +114,31 @@ def _node(state: State, inst) -> None:
             ed.end_pin()
         imgui.end_group()
         # What it receives or makes (§4), what it asks its source (§5).
+        def line(colour, text):
+            imgui.text_colored(colour, text)
+            rights.append(imgui.get_item_rect_max().x)
+
         if inst.error:
-            imgui.text_colored(RED, inst.error)
+            line(RED, inst.error)
         else:
             first = next(iter(inst.schemas.values()), None) or next(iter(inst.given.values()), None)
             if first is not None:
-                imgui.text_colored(GREY, first.describe())
-            if not inst.spec.inputs and "features" in inst.wanted:
+                line(GREY, first.describe())
+            if not inputs and "features" in inst.wanted:
                 cols = first.names() if first is not None else None
-                imgui.text_colored(GREY, "asks: " + inst.wanted["features"].describe(cols))
+                line(GREY, "asks: " + inst.wanted["features"].describe(cols))
         for note in inst.notes[:3]:
-            imgui.text_colored(YELLOW, note)
+            line(YELLOW, note)
         if len(inst.notes) > 3:
-            imgui.text_colored(YELLOW, f"... {len(inst.notes) - 3} more (Properties)")
+            line(YELLOW, f"... {len(inst.notes) - 3} more (Properties)")
         c = state.counts(inst.id)
         if c is not None:
             n_in, outs = c
-            text = (f"in {n_in:,}" if inst.spec.inputs else "") + \
-                   ("  " if inst.spec.inputs and outs else "") + \
+            text = (f"in {n_in:,}" if inputs else "") + \
+                   ("  " if inputs and outs else "") + \
                    "  ".join(f"{p} {n:,}" for p, n in outs.items())
-            imgui.text_colored(GREEN, text or "-")
+            line(GREEN, text or "-")
+    _rights[inst.id] = max(rights)
     imgui.pop_text_wrap_pos()
     ed.end_node()
     # The band behind the title, drawn under the node's content, rounded at the top as the node.
@@ -167,7 +183,10 @@ def draw(state: State) -> None:
         if link.src_port not in outs:
             continue   # a rule just removed: the link goes at the next refresh
         i = outs.index(link.src_port)
-        j = [p.name for p in dst.inputs].index(link.dst_port)
+        ins = state.graph.nodes[link.dst].inputs()
+        if link.dst_port not in ins:
+            continue   # a layer just removed: the link goes at the next refresh
+        j = ins.index(link.dst_port)
         made = _flash.get(link)
         if made is not None and time.monotonic() - made < FLASH:   # just joined: bright and thick
             ed.link(ed.LinkId(link_id(link)), ed.PinId(pin_out(link.src, i)), ed.PinId(pin_in(link.dst, j)), GREEN, 4.0)

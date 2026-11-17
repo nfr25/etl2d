@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import webbrowser
 from pathlib import Path
 
 from imgui_bundle import hello_imgui, imgui, immapp
@@ -9,6 +10,50 @@ from imgui_bundle import imgui_node_editor as ed
 from imgui_bundle import portable_file_dialogs as pfd
 
 from etl2d import __version__
+
+DOCS = Path(__file__).resolve().parents[2] / "docs"
+
+
+def _browse(path: Path) -> None:
+    """A page of the notes in the browser (a file of the program's folder)."""
+    webbrowser.open(path.resolve().as_uri())
+
+
+_version_cache: list = []
+
+
+def _versions(st) -> list:
+    """What etl2d runs on; render2d asked once (it is another program)."""
+    if not _version_cache:
+        import platform
+        from osgeo import gdal, osr
+        from imgui_bundle import imgui as _im
+        import imgui_bundle
+        out = [("etl2d", __version__), ("Python", platform.python_version()),
+               ("GDAL", gdal.__version__)]
+        try:
+            out.append(("PROJ", f"{osr.GetPROJVersionMajor()}.{osr.GetPROJVersionMinor()}.{osr.GetPROJVersionMicro()}"))
+        except Exception:
+            pass
+        out += [("imgui-bundle", getattr(imgui_bundle, "__version__", "?")), ("Dear ImGui", _im.get_version())]
+        try:
+            import numpy
+            out.append(("numpy", numpy.__version__))
+        except ImportError:
+            pass
+        exe = st.render2d_exe()
+        v = "not found (Window > Settings)"
+        if exe:
+            import subprocess
+            try:
+                r = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=10,
+                                   creationflags=0x08000000 if __import__("os").name == "nt" else 0)
+                v = (r.stdout or r.stderr).strip().splitlines()[0] if (r.stdout or r.stderr).strip() else exe
+            except (OSError, subprocess.SubprocessError):
+                v = f"{exe} (does not answer)"
+        out.append(("render2d", v))
+        _version_cache.extend(out)
+    return _version_cache
 from etl2d.ui import editor, properties, settings, table
 from etl2d.ui.mapview import MapView
 from etl2d.ui.editor import GREEN, GREY, RED
@@ -53,19 +98,39 @@ class App:
         self.state = State()
         if path is not None:
             self.state.open(path)
-        self.ask_quit = False
+        self.pending = None      # what waits for the answer to "Save first?" (quit, new, open)
+        self.ask_now = False
+        self.about = False       # Help > About etl2d
         self.settings = settings.Settings()
+        if self.state.path is not None:
+            self.settings.remember(self.state.path)
         self.map = MapView(self.settings)
         self.open_settings = False
         self.last_looked = self.state.looked   # the Table comes to the front when it changes, not at start
         self.params = self._runner_params()
 
     # ---- the file menu ----------------------------------------------------------------------
-    def open(self) -> None:
-        files = pfd.open_file("Open a workflow", str(self.state.graph.base_dir),
-                              ["etl2d workflows", "*.json", "All files", "*"]).result()
-        if files:
-            self.state.open(Path(files[0]))
+    def guard(self, action) -> None:
+        """An action that would lose the changes not saved (quit, new, open): a question first."""
+        if self.state.changed():
+            self.pending, self.ask_now = action, True
+        else:
+            action()
+
+    def open(self, path: Path | None = None) -> None:
+        if path is None:
+            files = pfd.open_file("Open a workflow", str(self.state.graph.base_dir),
+                                  ["etl2d workflows", "*.json", "All files", "*"]).result()
+            if not files:
+                return
+            path = Path(files[0])
+        if not Path(path).exists():
+            self.state.say("error", f"{path}: no such file (removed from the recent ones)")
+            self.settings.forget(path)
+            return
+        self.state.open(Path(path))
+        if self.state.path is not None and Path(path).resolve() == self.state.path.resolve():
+            self.settings.remember(path)
 
     def save(self, as_new: bool = False) -> bool:
         editor.sync_positions(self.state)
@@ -74,16 +139,31 @@ class App:
                                    ["etl2d workflows", "*.json"]).result()
             if not target:
                 return False
-            return self.state.save(Path(target))
-        return self.state.save()
+            ok = self.state.save(Path(target))
+        else:
+            ok = self.state.save()
+        if ok and self.state.path is not None:
+            self.settings.remember(self.state.path)
+        return ok
 
     def menus(self) -> None:
         st = self.state
         if imgui.begin_menu("File"):
             if imgui.menu_item_simple("New", "Ctrl+N"):
-                st.new()
+                self.guard(st.new)
             if imgui.menu_item_simple("Open...", "Ctrl+O"):
-                self.open()
+                self.guard(self.open)
+            if imgui.begin_menu("Open recent", bool(self.settings.recent)):
+                for p in list(self.settings.recent):
+                    shown = Path(p).name
+                    if imgui.menu_item_simple(f"{shown}##{p}"):
+                        self.guard(lambda p=p: self.open(Path(p)))
+                    imgui.set_item_tooltip(p)
+                imgui.separator()
+                if imgui.menu_item_simple("Clear the list"):
+                    self.settings.recent = []
+                    self.settings.save()
+                imgui.end_menu()
             if imgui.menu_item_simple("Save", "Ctrl+S"):
                 self.save()
             if imgui.menu_item_simple("Save as..."):
@@ -95,6 +175,7 @@ class App:
             if imgui.menu_item_simple("Quit"):
                 self.params.app_shall_exit = True
             imgui.end_menu()
+        # (Help comes after Window, below.)
         if imgui.begin_menu("Edit"):
             some = bool(st.selection) and not st.running
             if imgui.menu_item("Undo", "Ctrl+Z", False, bool(st.undo_stack) and not st.running)[0]:
@@ -131,6 +212,17 @@ class App:
             if imgui.menu_item_simple("Default layout"):
                 self.params.docking_params.layout_reset = True
             imgui.end_menu()
+        if imgui.begin_menu("Help"):
+            if imgui.menu_item_simple("Notes (the design)"):
+                _browse(DOCS / "notions.en.html")
+            if imgui.menu_item_simple("Reading the code"):
+                _browse(DOCS / "code.en.html")
+            if imgui.menu_item_simple("etl2d on GitHub"):
+                webbrowser.open("https://github.com/nfr25/etl2d")
+            imgui.separator()
+            if imgui.menu_item_simple("About etl2d"):
+                self.about = True
+            imgui.end_menu()
         # The state, at the right of the bar: the file, a run going on.
         label = (st.path.name if st.path else "(new workflow)") + (" *" if st.changed() else "")
         if st.running:
@@ -161,9 +253,9 @@ class App:
         if ctrl and imgui.is_key_pressed(imgui.Key.s, False):
             self.save()
         elif ctrl and imgui.is_key_pressed(imgui.Key.o, False):
-            self.open()
+            self.guard(self.open)
         elif ctrl and imgui.is_key_pressed(imgui.Key.n, False):
-            st.new()
+            self.guard(st.new)
         elif ctrl and imgui.is_key_pressed(imgui.Key.z, False):
             (st.redo if io.key_shift else st.undo)()
         elif ctrl and imgui.is_key_pressed(imgui.Key.y, False):
@@ -182,29 +274,69 @@ class App:
             st.stop.set()
 
     def quit_question(self) -> None:
-        """Closing with something not saved: a question first."""
-        if self.params.app_shall_exit and self.state.changed() and not self.ask_quit:
+        """Quit, New, Open with something not saved: a question first (guard())."""
+        if self.params.app_shall_exit and self.state.changed() and self.pending is None:
             self.params.app_shall_exit = False
-            self.ask_quit = True
+            self.guard(lambda: setattr(self.params, "app_shall_exit", True))
+        if self.ask_now:
+            self.ask_now = False
             imgui.open_popup("Save first?")
         if imgui.begin_popup_modal("Save first?", None, imgui.WindowFlags_.always_auto_resize)[0]:
             imgui.text("The workflow has changes that are not saved.")
             if imgui.button("Save"):
-                if self.save():
-                    self.params.app_shall_exit = True
-                else:
-                    self.ask_quit = False   # no file chosen: the window stays, the question comes again next time
+                action, self.pending = self.pending, None
+                if self.save() and action is not None:   # no file chosen: nothing happens
+                    action()
                 imgui.close_current_popup()
             imgui.same_line()
             if imgui.button("Don't save"):
+                action, self.pending = self.pending, None
                 self.state.saved = self.state.text()
-                self.params.app_shall_exit = True
+                if action is not None:
+                    action()
                 imgui.close_current_popup()
             imgui.same_line()
             if imgui.button("Cancel"):
-                self.ask_quit = False
+                self.pending = None
                 imgui.close_current_popup()
             imgui.end_popup()
+
+    def about_window(self) -> None:
+        """Help > About etl2d: what it is, and what it runs on (as carto2D's, its notes §71)."""
+        if not self.about:
+            return
+        imgui.set_next_window_size(imgui.ImVec2(imgui.get_font_size() * 34, 0), imgui.Cond_.first_use_ever)
+        opened, self.about = imgui.begin("About etl2d", self.about)
+        if opened:
+            imgui.text_unformatted("etl2d - geographic data moved and transformed by a graph of nodes, on GDAL")
+            imgui.text_disabled("Copyright (c) 2026 Noel Frankinet. GNU AGPL v3 or later.")
+            def table(name, rows):
+                if imgui.begin_table(name, 2, imgui.TableFlags_.sizing_fixed_fit):
+                    imgui.table_setup_column("a", imgui.TableColumnFlags_.width_fixed)
+                    imgui.table_setup_column("b", imgui.TableColumnFlags_.width_stretch)
+                    for k, v in rows:
+                        imgui.table_next_row()
+                        imgui.table_next_column()
+                        imgui.text_disabled(k)
+                        imgui.table_next_column()
+                        imgui.text_wrapped(str(v))
+                    imgui.end_table()
+
+            imgui.separator_text("Versions")
+            table("versions", _versions(self.settings))
+            imgui.separator_text("Folders")
+            home = Path(__file__).resolve().parents[2]
+            table("folders", [("settings", settings.folder()), ("nodes", home / "nodes"),
+                              ("custom nodes", home / "custom_nodes"),
+                              ("workflow", self.state.path or "(not saved yet)"),
+                              ("kept files", self.state.graph.work_folder())])
+            imgui.separator_text("Nodes")
+            by: dict = {}
+            for spec in self.state.registry.specs.values():
+                by.setdefault(spec.category, []).append(spec.name)
+            for cat in sorted(by):
+                imgui.text_wrapped(f"{cat}: {', '.join(sorted(by[cat]))}")
+        imgui.end()
 
     def every_frame(self) -> None:
         # Another kept output chosen (a right click, a link clicked): the Table comes to the front.
@@ -222,6 +354,7 @@ class App:
             st.track()
         self.shortcuts()
         self.quit_question()
+        self.about_window()
         settings.draw(self.settings, self.open_settings)
         self.open_settings = False
 

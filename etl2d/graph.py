@@ -51,6 +51,10 @@ class NodeInstance:
     def label(self) -> str:
         return f"#{self.id} {self.type}"
 
+    def inputs(self) -> list[str]:
+        """Its input ports now: fixed, or made from its parameters (§7, the MapWriter's layers)."""
+        return self.spec.input_names(self.params) if self.spec is not None else []
+
     def outputs(self) -> list[str]:
         """Its output ports now: fixed, or made from its parameters (§7, the Filter)."""
         return self.spec.output_names(self.params) if self.spec is not None else []
@@ -112,7 +116,7 @@ class Graph:
                     raise GraphError(f"link {item}: no node {end}")
                 inst = g.nodes[end]
                 if inst.spec is not None:
-                    ports = inst.outputs() if side == "outputs" else [p.name for p in inst.spec.inputs]
+                    ports = inst.outputs() if side == "outputs" else inst.inputs()
                     if port not in ports:
                         raise GraphError(f"link {item}: {inst.label()} has no {side[:-1]} '{port}'")
             if any(l.dst == link.dst and l.dst_port == link.dst_port for l in g.links):
@@ -190,6 +194,11 @@ class Graph:
     def remove_link(self, link: Link) -> None:
         self.links = [l for l in self.links if l != link]
 
+    def rename_input(self, nid: int, old: str, new: str) -> None:
+        """An input renamed (a MapWriter's layer, §7): its link follows."""
+        self.links = [Link(l.src, l.src_port, l.dst, new) if l.dst == nid and l.dst_port == old else l
+                      for l in self.links]
+
     def rename_output(self, nid: int, old: str, new: str) -> None:
         """An output renamed (a Filter's rule, §7): its links and its keeping follow."""
         self.links = [Link(l.src, new, l.dst, l.dst_port) if l.src == nid and l.src_port == old else l
@@ -206,6 +215,12 @@ class Graph:
             if inst is not None and inst.spec is not None and l.src_port not in inst.outputs():
                 self.links.remove(l)
                 gone.append(f"link {inst.label()} {l.src_port} > #{l.dst} removed: no output '{l.src_port}' any more")
+        for l in list(self.links):
+            inst = self.nodes.get(l.dst)
+            if inst is not None and inst.spec is not None and l.dst_port not in inst.inputs():
+                self.links.remove(l)
+                gone.append(f"link #{l.src} {l.src_port} > {inst.label()} {l.dst_port} removed: "
+                            f"no input '{l.dst_port}' any more")
         for nid, port in list(self.keep):
             inst = self.nodes.get(nid)
             if inst is not None and inst.spec is not None and port not in inst.outputs():
@@ -310,7 +325,7 @@ class Graph:
                 wanted[port] = Needs.everything()
             inst.wanted = wanted
             inst.asks = {}
-            if inst.spec is None or inst.error or not inst.spec.inputs:
+            if inst.spec is None or inst.error or not inst.inputs():
                 continue
             obj = self.instantiate(inst)
             asks = {}
@@ -320,7 +335,7 @@ class Graph:
                 except Exception as e:   # a node's bug: it then needs everything, and says so
                     inst.notes.append(f"needs(): {type(e).__name__}: {e}; everything read")
                     asks = {}
-            inst.asks = {p.name: asks.get(p.name, Needs.everything()) for p in inst.spec.inputs}
+            inst.asks = {name: asks.get(name, Needs.everything()) for name in inst.inputs()}
 
     def propagate(self) -> bool:
         """§4: every node's output structures, from the readers down, without reading data.
@@ -344,7 +359,7 @@ class Graph:
                     break
                 given[link.dst_port] = src.schemas[link.src_port]
             if not inst.error:
-                missing = [p.name for p in inst.spec.inputs if p.name not in given]
+                missing = [name for name in inst.inputs() if name not in given]
                 if missing:
                     inst.error = "input not joined: " + ", ".join(missing)
             inst.given = given

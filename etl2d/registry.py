@@ -54,6 +54,17 @@ class NodeSpec:
         """No output: it ends a branch (a writer); the runner pulls through it."""
         return not self.outputs
 
+    def input_names(self, params: dict) -> list[str]:
+        """Its inputs for these parameters: `inputs_for(params)` when the class has one
+        (the MapWriter: one per layer, §7), else the fixed list."""
+        fn = getattr(self.cls, "inputs_for", None)
+        if fn is not None:
+            try:
+                return [str(n) for n in fn(params)]
+            except Exception:
+                pass
+        return [i.name for i in self.inputs]
+
     def output_names(self, params: dict) -> list[str]:
         """Its outputs for these parameters: `outputs_for(params)` when the class has one
         (the Filter: one per rule, then 'else', §7), else the fixed list."""
