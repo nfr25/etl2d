@@ -25,10 +25,10 @@ node before anything runs, and each reader asks its source only for the box and 
 ## Run
 
 ```
-run.bat                                the window, an empty workflow
-run.bat ui examples\grand-place.json   the window, with a workflow
-run.bat nodes                          the node types found
-run.bat run examples\grand-place.json  a workflow, without a window
+etl2d.bat                                the window, an empty workflow
+etl2d.bat ui examples\grand-place.json   the window, with a workflow
+etl2d.bat nodes                          the node types found
+etl2d.bat run examples\grand-place.json  a workflow, without a window
 ```
 
 In the window: a click in the library (left) adds a node, or a right click in the graph; a
@@ -63,6 +63,7 @@ printed first).
 | Clipper | inside, partial (across the edge, whole or cut), outside a box |
 | GeometryValidator | valid; repaired (MakeValid, its own dimension kept, made Multi); invalid; with GEOS's reason (`Self-intersection[5 5]`) |
 | Filter | one output per rule (`area < 50`, `type in maison, garage`, or an expression `npoints() > 500`), plus `else`; the first rule met wins |
+| SpatialRelator | which reference each feature falls in (inside, point inside, intersects, contains): `matched` with the reference's columns copied and the count, `unmatched` |
 | PythonCaller | your `process(feature)` for each feature |
 | Writer | any GDAL format that writes; create, replace, append; a failed run leaves what was there |
 | MapWriter | a map drawn by [render2d](https://github.com/nfr25/render2d): PNG, SVG or a PDF page (title, scale, legend); one input per layer, each with its style or coloured by a column |

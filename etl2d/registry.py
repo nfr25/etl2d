@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import sys
 import traceback
 from dataclasses import dataclass, field
@@ -28,7 +29,8 @@ class Param:
     folder), "bbox" (four numbers), "crs", "code" (Python), "choice" (one of
     `choices`); lists: "rows" (dictionaries with the keys in `choices`),
     "columns" (one row per input column: keep, rename; the Attributes node),
-    "names" (some of the input's column names).
+    "names" (some of the input's column names; of the input named by `input`
+    when the node has several: the SpatialRelator's reference).
     """
 
     name: str
@@ -36,6 +38,7 @@ class Param:
     default: Any = None
     choices: tuple = ()
     help: str = ""
+    input: str = ""   # "names": whose columns; empty: the first input's
 
 
 @dataclass
@@ -83,7 +86,7 @@ def node(name: str, category: str = "Other", help: str = ""):
     def mark(cls):
         cls._etl2d_spec = NodeSpec(name, category, cls, list(getattr(cls, "inputs", [])),
                                    list(getattr(cls, "outputs", [])), list(getattr(cls, "params", [])),
-                                   help=help or (cls.__doc__ or "").strip())
+                                   help=help or inspect.cleandoc(cls.__doc__ or ""))
         return cls
 
     return mark

@@ -9,6 +9,6 @@ from etl2d.feature import Feature
 from etl2d.registry import Input, Output, Param, node
 from etl2d.schema import Field, Schema, SchemaError
 
-__version__ = "0.9.0"
+__version__ = "0.10.1"
 
 __all__ = ["Feature", "Field", "Input", "Output", "Param", "Schema", "SchemaError", "node", "__version__"]

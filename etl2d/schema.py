@@ -71,6 +71,16 @@ class Schema:
         code, name = srs.GetAuthorityCode(None), srs.GetAuthorityName(None)
         return f"{name}:{code}" if code and name else (srs.GetName() or "?")
 
+    def same_crs(self, other: "Schema") -> bool:
+        """The same system, however each file writes it (two WKT of EPSG:31370 may differ in their text).
+        A side without a system declared: taken as the same (nothing to say against it)."""
+        if not self.crs or not other.crs or self.crs == other.crs:
+            return True
+        a, b = osr.SpatialReference(), osr.SpatialReference()
+        if a.ImportFromWkt(self.crs) != 0 or b.ImportFromWkt(other.crs) != 0:
+            return False
+        return bool(a.IsSame(b, ["IGNORE_DATA_AXIS_TO_SRS_AXIS_MAPPING=YES", "CRITERION=EQUIVALENT_EXCEPT_AXIS_ORDER_GEOGCRS"]))
+
     def describe(self) -> str:
         """One line, for the log and for a link's tooltip."""
         parts = [f"{len(self.fields)} columns", self.geometry]

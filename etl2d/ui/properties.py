@@ -30,7 +30,7 @@ def draw(state: State) -> None:
     if inst.spec.help:
         imgui.push_text_wrap_pos(0)
         first, _, rest = inst.spec.help.strip().partition("\n\n")
-        imgui.text_colored(GREY, first)     # the first paragraph; the rest under the mouse
+        imgui.text_colored(GREY, " ".join(first.split()))   # the first paragraph, wrapped by the panel; the rest under the mouse
         imgui.pop_text_wrap_pos()
         if rest:
             imgui.set_item_tooltip(rest)
@@ -122,7 +122,7 @@ def _param(state: State, inst, p) -> bool:
         if typed and not changed:   # a text being typed: kept, propagated when the field is left
             inst.params[p.name] = nv
     elif t == "names":
-        changed, nv = _names(inst, list(v or []))
+        changed, nv = _names(inst, list(v or []), p.input)
     elif t == "rules":
         changed, nv = _rules(state, inst, [dict(r) for r in (v or [])])
     elif t == "layers":
@@ -460,11 +460,11 @@ def _layers(state: State, inst, layers: list) -> tuple[bool, list, bool]:
     return changed, layers, typed
 
 
-def _names(inst, names: list) -> tuple[bool, list]:
-    """Some of the input's columns, ticked."""
-    s = next(iter(inst.given.values()), None)
+def _names(inst, names: list, of: str = "") -> tuple[bool, list]:
+    """Some of the input's columns, ticked (of the input named `of`, when given)."""
+    s = inst.given.get(of) if of else next(iter(inst.given.values()), None)
     if s is None:
-        imgui.text_colored(GREY, "join an input first")
+        imgui.text_colored(GREY, f"join the input '{of}' first" if of else "join an input first")
         return False, names
     changed = False
     for f in s.fields:

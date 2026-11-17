@@ -18,7 +18,8 @@ CYAN = imgui.ImVec4(0.40, 0.80, 1.0, 1.0)     # §9: a kept output, its links
 
 # The title band of a node: one colour per category, to see the role of a node at a glance.
 BANDS = {"Readers": (0.20, 0.42, 0.30), "Writers": (0.47, 0.27, 0.22), "Geometry": (0.22, 0.33, 0.52),
-         "Attributes": (0.40, 0.36, 0.20), "Python": (0.36, 0.25, 0.48), "Filters": (0.16, 0.42, 0.44)}
+         "Attributes": (0.40, 0.36, 0.20), "Python": (0.36, 0.25, 0.48), "Filters": (0.16, 0.42, 0.44),
+         "Relations": (0.50, 0.27, 0.42)}
 BAND_OTHER = (0.32, 0.32, 0.36)   # custom categories
 FLASH = 0.8   # seconds a new link stays bright: the moment of joining, seen
 _flash: dict = {}   # Link -> time it was made

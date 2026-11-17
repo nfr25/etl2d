@@ -27,7 +27,7 @@ def main(argv=None) -> int:
     u.add_argument("workflow", nargs="?")
     args = ap.parse_args(argv)
     if args.cmd == "run" and not args.workflow:
-        print("run needs a workflow: run.bat run job.json (run.bat alone, or run.bat ui, opens the window)",
+        print("run needs a workflow: etl2d.bat run job.json (etl2d.bat alone, or etl2d.bat ui, opens the window)",
               file=sys.stderr)
         return 2
 
@@ -70,6 +70,7 @@ def main(argv=None) -> int:
         print("the workflow cannot run (see the errors above)", file=sys.stderr)
         return 2
 
+    said = {nid: list(n.notes) for nid, n in g.nodes.items()}
     result = run(g)
     print()
     for nid in g.order():
@@ -78,6 +79,9 @@ def main(argv=None) -> int:
             continue
         outs = ", ".join(f"{p} {c:,}" for p, c in st.features_out.items())
         print(f"{g.nodes[nid].label():24} in {st.features_in:,}" + (f"  out {outs}" if outs else ""))
+        for note in g.nodes[nid].notes:   # what a node said while running (the SpatialRelator: its reference)
+            if note not in said.get(nid, []):
+                print(f"{'':24}   {note}")
     for (nid, port), count in sorted(result.kept.items()):   # §9
         print(f"kept {g.nodes[nid].label()} {port}: {count:,} in {g.kept_path(nid, port)}")
     rate = result.read() / result.seconds if result.seconds > 0 else 0.0

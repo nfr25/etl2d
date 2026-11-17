@@ -161,6 +161,7 @@ th{background:var(--code)}
     <tr><td><code>etl2d/graph.py</code></td><td>333</td><td><code>Graph</code>: nodes (<code>NodeInstance</code>), links (<code>Link</code>), kept outputs. Reading and writing the JSON, editing (add, link, copy), <code>order()</code>, <code>instantiate()</code>, <code>propagate()</code>, <code>plan_needs()</code>.</td><td>§4, §5, §10</td></tr>
     <tr><td><code>etl2d/run.py</code></td><td>173</td><td><code>run()</code>: builds the chain of generators and pulls it. <code>split()</code> for nodes with several outputs.</td><td>§3, §9</td></tr>
     <tr><td><code>etl2d/expr.py</code></td><td>520</td><td>The expressions (<code>= area * 2</code>): <code>tokens()</code> reads the text, <code>Parser</code> (Pratt's method: each operator its strength) makes a tree of small functions, <code>FUNCTIONS</code> lists the functions; <code>compile_expr()</code> once, then a call per feature.</td><td>§7</td></tr>
+    <tr><td><code>etl2d/index.py</code></td><td>59</td><td><code>Grid</code>: the boxes of the references written in the cells of a grid (side: the extent / √n); <code>query(box)</code> gives those whose box meets it, in their order. The SpatialRelator's index.</td><td>§7</td></tr>
     <tr><td><code>etl2d/keep.py</code></td><td>99</td><td><code>keeper()</code>: a kept output written to a FlatGeobuf; <code>file_view()</code>: a kept file's system and extent, for the Map.</td><td>§9</td></tr>
     <tr><td><code>etl2d/__main__.py</code></td><td>89</td><td>The command line.</td><td>§10</td></tr>
     <tr><td><code>nodes/*.py</code></td><td>960</td><td>The nine nodes: one class each, found as custom ones are.</td><td>§7</td></tr>
@@ -326,10 +327,10 @@ then each panel's function, for the panels shown:
   <h2>11. An order to read it in</h2>
   <ol class="road">
     <li><code>etl2d/feature.py</code>, <code>schema.py</code>, <code>needs.py</code>: the three small data types (20 minutes).</li>
-    <li><code>nodes/attributes.py</code>: the simplest node with an input, its three methods; then <code>nodes/geometry.py</code>, the Clipper, and <code>nodes/filter.py</code>, the Filter (its rules made once into small functions, then <code>route()</code>); <code>nodes/validator.py</code>, the GeometryValidator, the same <code>split()</code> with three fixed outputs.</li>
+    <li><code>nodes/attributes.py</code>: the simplest node with an input, its three methods; then <code>nodes/geometry.py</code>, the Clipper, and <code>nodes/filter.py</code>, the Filter (its rules made once into small functions, then <code>route()</code>); <code>nodes/validator.py</code>, the GeometryValidator, the same <code>split()</code> with three fixed outputs; <code>nodes/relator.py</code>, the SpatialRelator, two inputs: the reference read whole into a grid (<code>etl2d/index.py</code>) at the first feature asked, then the features streamed.</li>
     <li><code>etl2d/registry.py</code>: how <code>@node</code> and the folders make the library.</li>
     <li><code>etl2d/graph.py</code>, <code>propagate()</code> and <code>plan_needs()</code>, with §5 of this page beside.</li>
-    <li><code>etl2d/run.py</code>, <code>run()</code>, with §7 of this page beside: the heart. Try it: a <code>print()</code> in Attributes' <code>gen()</code> and in the Writer's <code>write()</code>, then <code>run.bat run</code> on a small file: the prints alternate, one feature at a time.</li>
+    <li><code>etl2d/run.py</code>, <code>run()</code>, with §7 of this page beside: the heart. Try it: a <code>print()</code> in Attributes' <code>gen()</code> and in the Writer's <code>write()</code>, then <code>etl2d.bat run</code> on a small file: the prints alternate, one feature at a time.</li>
     <li><code>nodes/readers.py</code> and <code>nodes/writers.py</code>: the parts that touch GDAL.</li>
     <li><code>ui/state.py</code>, then <code>ui/app.py</code>, then <code>ui/editor.py</code>: the window, once the engine is clear.</li>
   </ol>

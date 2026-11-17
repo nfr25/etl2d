@@ -733,3 +733,72 @@ def test_geometry_validator(tmp_path, workflow):
     if importlib.import_module(reasons).Reasons().ok:   # SpatiaLite in this GDAL: GEOS's words
         assert rep["bow tie"][1] == "Self-intersection[5 5]"
     assert ogr.CreateGeometryFromWkt("POLYGON ((0 0,10 10,10 0,0 10,0 0))").GetArea() == 0   # as drawn
+
+
+def test_spatial_relator(tmp_path, workflow):
+    """§7: two parcels side by side, A (0-10) and B (10-20); points in A, in B, on their shared edge, far
+    away; a building overflowing from B into A. The four tests, first and each, the count, the errors."""
+    make_layer(tmp_path / "parcels.gpkg", [("POLYGON ((0 0,10 0,10 10,0 10,0 0))", {"KEY": "A", "KIND": "PR"}),
+                                           ("POLYGON ((10 0,20 0,20 10,10 10,10 0))", {"KEY": "B", "KIND": "PR"})],
+               geom_type=ogr.wkbPolygon, fields=(("KEY", ogr.OFTString), ("KIND", ogr.OFTString)))
+    make_layer(tmp_path / "points.gpkg", [("POINT (5 5)", {"NAME": "in A"}), ("POINT (15 5)", {"NAME": "in B"}),
+                                          ("POINT (10 5)", {"NAME": "on the edge"}), ("POINT (30 30)", {"NAME": "far"})])
+    make_layer(tmp_path / "building.gpkg", [("POLYGON ((8 2,19 2,19 8,8 8,8 2))", {"NAME": "overflows"})],
+               geom_type=ogr.wkbPolygon)
+
+    def relate(features, params, reference="parcels.gpkg"):
+        for p in ("matched.gpkg", "unmatched.gpkg"):
+            (tmp_path / p).unlink(missing_ok=True)
+        g = workflow([{"id": 1, "type": "Reader", "params": {"source": features}},
+                      {"id": 2, "type": "Reader", "params": {"source": reference}},
+                      {"id": 3, "type": "SpatialRelator", "params": params},
+                      {"id": 4, "type": "Writer", "params": {"path": "matched.gpkg"}},
+                      {"id": 5, "type": "Writer", "params": {"path": "unmatched.gpkg"}}],
+                     [[1, "features", 3, "features"], [2, "features", 3, "reference"],
+                      [3, "matched", 4, "features"], [3, "unmatched", 5, "features"]])
+        assert g.propagate(), [n.error for n in g.nodes.values()]
+        r = run(g)
+        assert r.ok, r.error
+        got = sorted((a.get("NAME") or a.get("KEY"), a.get("KEY") if "NAME" in a else a.get("n"), a.get("n"))
+                     for _, a in read_all(tmp_path / "matched.gpkg"))
+        return g, got, sorted(a.get("NAME") or a.get("KEY") for _, a in read_all(tmp_path / "unmatched.gpkg"))
+
+    # inside: the point on the shared edge is inside neither (a boundary is not the inside)
+    g, m, u = relate("points.gpkg", {"test": "inside", "columns": ["KEY"], "count": "n"})
+    assert m == [("in A", "A", 1), ("in B", "B", 1)] and u == ["far", "on the edge"]
+    assert g.nodes[3].schemas["matched"].names() == ["NAME", "KEY", "n"]
+    assert g.nodes[3].schemas["unmatched"].names() == ["NAME"]
+    assert g.nodes[3].asks["reference"].columns == frozenset({"KEY"})   # §5: the copied column only
+    assert any(n.startswith("reference 2, cell") for n in g.nodes[3].notes)
+    # intersects: the edge touches both; first: A (the reference's order), the count says 2
+    _, m, u = relate("points.gpkg", {"test": "intersects", "columns": ["KEY"], "count": "n"})
+    assert ("on the edge", "A", 2) in m and u == ["far"]
+    # each: the edge point out twice, once with A, once with B
+    _, m, _ = relate("points.gpkg", {"test": "intersects", "columns": ["KEY"], "several": "each", "count": "n"})
+    assert [x for x in m if x[0] == "on the edge"] == [("on the edge", "A", 2), ("on the edge", "B", 2)]
+    # the building: inside neither, intersects both, its point on surface in B
+    _, m, u = relate("building.gpkg", {"test": "inside", "columns": ["KEY"]})
+    assert m == [] and u == ["overflows"]
+    _, m, _ = relate("building.gpkg", {"test": "point inside", "columns": ["KEY"]})
+    assert m == [("overflows", "B", None)]
+    # contains, with the count: how many points each parcel holds (the edge point: in neither)
+    _, m, u = relate("parcels.gpkg", {"test": "contains", "count": "n"}, reference="points.gpkg")
+    assert m == [("A", 1, 1), ("B", 1, 1)] and u == []
+
+    # said before running (§4)
+    def error(params, reference="parcels.gpkg", features="parcels.gpkg"):
+        g = workflow([{"id": 1, "type": "Reader", "params": {"source": features}},
+                      {"id": 2, "type": "Reader", "params": {"source": reference}},
+                      {"id": 3, "type": "SpatialRelator", "params": params}],
+                     [[1, "features", 3, "features"], [2, "features", 3, "reference"]])
+        g.propagate()
+        return g.nodes[3].error
+    assert "give a prefix" in error({"columns": ["KEY"]})
+    assert error({"columns": ["KEY"], "prefix": "parcel_"}) == ""
+    assert "no column 'NOPE' arrives on the reference" in error({"columns": ["NOPE"]})
+    make_layer(tmp_path / "far.gpkg", [("POINT (649000 670600)", {"NAME": "x"})], epsg=3812)
+    assert "a Reprojector" in error({}, reference="far.gpkg", features="points.gpkg")
+    g = workflow([{"id": 1, "type": "Reader", "params": {"source": "points.gpkg"}},
+                  {"id": 3, "type": "SpatialRelator", "params": {}}], [[1, "features", 3, "features"]])
+    g.propagate()
+    assert g.nodes[3].error == "input not joined: reference"

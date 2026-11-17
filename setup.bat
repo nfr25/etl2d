@@ -12,4 +12,4 @@ rem GDAL for Windows, from Christoph Gohlke's wheels (PyPI has only its sources)
 .venv\Scripts\python -c "from osgeo import gdal; print('GDAL', gdal.__version__)"
 .venv\Scripts\python -m etl2d nodes
 echo.
-echo etl2d is ready: run.bat (the window), or run.bat run examples\grand-place.json
+echo etl2d is ready: etl2d.bat (the window), or etl2d.bat run examples\grand-place.json

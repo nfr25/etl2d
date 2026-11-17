@@ -127,7 +127,7 @@ th{background:var(--code)}
     <li><strong>render2d</strong> is not installed in the <code>.venv</code>: etl2d calls <code>render2d.exe</code> (the release zip, or the one installed with carto2D), its folder given once in the settings. Its GDAL and etl2d's do not meet: they exchange files only.</li>
   </ul>
 <pre>setup.bat      python -m venv .venv, then pip install -r requirements.txt (GDAL from Gohlke's index)
-run.bat        .venv\Scripts\python -m etl2d</pre>
+etl2d.bat      .venv\Scripts\python -m etl2d</pre>
   <p>On Linux (the CI, the agent's machine), GDAL's bindings come from the system's packages or from pip with GDAL installed; the code is the same.</p>
 </section>
 
@@ -332,6 +332,73 @@ run(inputs)    -> outputs     the features. Called when the workflow runs.</pre>
   <p><strong>Parameters</strong>: <em>repair</em> (on: the repairable go to <em>repaired</em>; off: every invalid one to <em>invalid</em>, untouched); <em>reason</em>, the name of the column added (<code>reason</code>). <strong>Needs</strong> (§5): what its outputs need together, nothing more (it reads no column).</p>
   <p><strong>Made</strong> (0.9.0, 17 November): <code>nodes/validator.py</code>. The four cases above are its test (the bow tie, the hole, the flat polygon, the square left alone). In a full run on the Grand-Place, from the GeoPackage to a GeoPackage, the 1,356 buildings come out on <em>valid</em> and 0 on <em>repaired</em>. The whole run (reading, checking, writing) takes 0.18 s.</p>
 
+  <h3>SpatialRelator: which reference each feature falls in <span class="tag">0.10.0</span></h3>
+  <p>FME's SpatialRelator and PointOnAreaOverlayer. Two inputs: the <em>features</em> to place, which flow one by one as everywhere else, and a <em>reference</em>, read whole first. For each feature, the node looks for the references it meets: the parcel an address stands in, the municipality of a building. It can copy columns of that reference onto the feature, as a join made by place instead of by key.</p>
+  <div class="scroll"><table>
+    <tr><th>Port</th><th>What</th></tr>
+    <tr><td>in: features</td><td>the features to place, streamed</td></tr>
+    <tr><td>in: reference</td><td>the references (the parcels, the municipalities), read to the end before the first feature goes out, and kept in memory with an index</td></tr>
+    <tr><td>out: matched</td><td>the features that met at least one reference, with the columns copied, and the count if asked</td></tr>
+    <tr><td>out: unmatched</td><td>the others, unchanged</td></tr>
+  </table></div>
+  <p><strong>The test</strong>, one of four:</p>
+  <div class="scroll"><table>
+    <tr><th>Test</th><th>True when</th><th>For</th></tr>
+    <tr><td>inside</td><td>the feature lies wholly inside the reference (GEOS's <code>Within</code>)</td><td>points in polygons: addresses in parcels</td></tr>
+    <tr><td>point inside</td><td>a point of the feature's own surface lies inside the reference (<code>PointOnSurface</code>, then <code>Within</code>). Unlike the centroid, that point is always on the feature, even for an L or a ring.</td><td>polygons to polygons drawn by different hands: buildings to parcels</td></tr>
+    <tr><td>intersects</td><td>they share at least one point, a touching edge included</td><td>lines crossing areas, "does it touch?"</td></tr>
+    <tr><td>contains</td><td>the reference lies wholly inside the feature (the reverse of <em>inside</em>)</td><td>with the count: how many addresses each parcel holds</td></tr>
+  </table></div>
+  <p><strong>Several references met</strong>: <em>first</em> (the first in the reference's reading order: the same answer at every run), or <em>each</em> (the feature goes out once per reference met, each time with that reference's columns). The <em>count</em> column, if named, gives how many were met in both cases.</p>
+
+  <div class="calc"><strong>The addresses in their parcels</strong> (the Grand-Place GeoPackage: 4,662 addresses, 1,202 parcels; test <em>inside</em>; the parcel's <code>capakey</code> copied as <code>parcel_capakey</code>)<ol>
+    <li>4,215 addresses fall in a parcel, and each in exactly one: <em>matched</em>. 447 fall in none: <em>unmatched</em>.</li>
+    <li>Your address layer already has its own <code>capakey</code>. Of the 4,215, <strong>4,210</strong> fall in the very parcel their <code>capakey</code> names. Not one falls in another parcel.</li>
+    <li>The 5 others have an empty <code>capakey</code>; the relation gives them one: Rue de l'Écuyer 43 (twice, two box numbers) → <code>21802B0994/00H000</code>; Rue de la Colline 2 → <code>21004A0934/00B000</code>.</li>
+    <li>The 447 unmatched do have a <code>capakey</code>, but it names a parcel this layer does not hold. They stand 16.6 m from the nearest parcel (the median). Probably parcels of another kind (all 1,202 here are of type PR): a question for you, who know UrbIS.</li>
+    <li>A Filter after it, rule <code>capakey != parcel_capakey</code> as an expression, would show the disagreements: here, none.</li>
+  </ol></div>
+
+  <div class="calc"><strong>The buildings to the parcels: why the test matters</strong> (1,356 buildings, 1,202 parcels)<ol>
+    <li><em>inside</em>: only <strong>41</strong> buildings lie wholly inside a parcel; 1,315 inside none. The buildings and the parcels come from two surveys: their edges never coincide exactly, a building overflows its parcel by a few centimetres.</li>
+    <li><em>intersects</em>: 885 buildings meet <strong>3 parcels or more</strong>, 345 meet 2, 124 meet 1. They touch their neighbours: of the 1,230 that meet a second parcel, half share less than <strong>0.18 m²</strong> with it, and 379 less than 0.01 m².</li>
+    <li><em>point inside</em>: <strong>1,338</strong> buildings in exactly one parcel, 18 in none (from 9 to 3,020 m²: probably on ground of the same other kind as the 447 addresses). The right answer.</li>
+    <li>For the record: the parcel found holds 99.83 % of its building's area (the median); 442 buildings have less than 99 % in it, 35 less than half. Those 35 straddle a limit: a building on two parcels.</li>
+  </ol></div>
+
+  <p><strong>The index.</strong> Testing each address against the 1,202 parcels would make 5.6 million tests. The node puts the references in a grid first, with no new library. The cell side is the extent's side divided by the square root of the count:</p>
+  <div class="calc"><strong>The grid of the Grand-Place's parcels</strong><ol>
+    <li>Extent: 781 m by 598 m, the larger side 781 m. 1,202 parcels: √1,202 = 34.7. Cell: 781 / 34.7 = <strong>22.5 m</strong>.</li>
+    <li>Each parcel is written in every cell its box covers: 889 cells used, 4,331 entries (3.6 cells per parcel).</li>
+    <li>Grand-Place 9, at (648,846.1, 670,653.2); the grid starts at (648,500.3, 670,401.7). Cell: (⌊345.8 / 22.5⌋, ⌊251.5 / 22.5⌋) = (⌊15.4⌋, ⌊11.2⌋) = <strong>(15, 11)</strong>.</li>
+    <li>4 parcels are written in that cell; the boxes of 2 of them hold the point; GEOS tests those 2, and the address is inside one: <code>21004A0539/00B000</code>, the very <code>capakey</code> the address carries. Over all the addresses: 2 tests each on average, instead of 1,202.</li>
+    <li>Built in 4 ms. Then 55,600 addresses a second for <em>inside</em>, 22,200 buildings a second for <em>point inside</em> (6.4 parcels tried per building: a building's box covers more cells than a point).</li>
+  </ol></div>
+  <svg viewBox="0 0 520 210" style="max-width:520px;width:100%;display:block;margin:8px 0 16px" role="img" aria-label="A grid over parcels: only the parcels in the address's cell are tested">
+    <g stroke="var(--line)" stroke-width="1">
+      <line x1="20" y1="20" x2="20" y2="190"/><line x1="80" y1="20" x2="80" y2="190"/><line x1="140" y1="20" x2="140" y2="190"/><line x1="200" y1="20" x2="200" y2="190"/><line x1="260" y1="20" x2="260" y2="190"/><line x1="320" y1="20" x2="320" y2="190"/>
+      <line x1="20" y1="20" x2="320" y2="20"/><line x1="20" y1="80" x2="320" y2="80"/><line x1="20" y1="140" x2="320" y2="140"/><line x1="20" y1="190" x2="320" y2="190"/>
+    </g>
+    <rect x="140" y="80" width="60" height="60" fill="var(--accent)" opacity="0.15"/>
+    <g fill="none" stroke="var(--accent2)" stroke-width="2">
+      <polygon points="30,30 120,28 138,94 35,100"/><polygon points="138,94 190,88 195,160 165,170"/><polygon points="190,88 250,40 300,70 270,150 195,160"/><polygon points="35,100 138,94 165,170 40,180"/><polygon points="120,28 250,40 190,88 138,94"/>
+    </g>
+    <circle cx="168" cy="114" r="4" fill="var(--accent)"/>
+    <text x="340" y="60" font-size="13" fill="currentColor">Grand-Place 9: cell (15, 11)</text>
+    <text x="340" y="82" font-size="13" fill="currentColor">4 parcels written there;</text>
+    <text x="340" y="104" font-size="13" fill="currentColor">2 boxes hold the point;</text>
+    <text x="340" y="126" font-size="13" fill="currentColor">GEOS tests 2, not 1,202</text>
+  </svg>
+
+  <p><strong>Memory.</strong> The reference is kept whole: about 1.7 KB a parcel as measured here, so the 212,232 parcels of the Region would take about 360 MB. That is acceptable on your machines. Beyond that (a reference of millions), the reference would go to a file with its spatial index (§9), as the kept outputs do: later, if a real workflow asks.</p>
+  <p><strong>Same source on both inputs</strong> (the parcels as reference, and also as features to compare with themselves): the reference is read to the end first, so the fan-out (§9) keeps all the features in memory meanwhile. It works; it costs memory twice.</p>
+  <p><strong>Said before running</strong> (§4): a copied column that does not arrive on the reference; a copied column whose name already arrives on the features (<code>capakey</code> on both sides): red, "give a prefix" (the <em>prefix</em> parameter: <code>parcel_</code> makes <code>parcel_capakey</code>); no reference joined. The structure of <em>matched</em> is the features' plus the copied columns (their type kept) and the count (Integer); that of <em>unmatched</em> is the features'.</p>
+  <p><strong>What it needs</strong> (§5): from the features, the box asked of its outputs and their columns, without those it adds. From the reference, only the copied columns, and the same box: a parcel whose box misses it cannot be met. The window shows on the node "reference 1,202, cell 22.5 m", then the counts of its outputs.</p>
+  <p><strong>Parameters</strong>: <em>test</em> (inside, point inside, intersects, contains); <em>columns</em> (the reference's columns copied, chosen in a list, as Attributes' keep); <em>prefix</em> (empty by default); <em>several</em> (first, each); <em>count</em> (the name of the count column; empty: none).</p>
+  <p><strong>Made</strong> (0.10.0, 17 November): <code>nodes/relator.py</code>, the grid in <code>etl2d/index.py</code>. Its test is two parcels side by side with a point on their shared edge: <em>inside</em> neither, <em>intersects</em> both (out twice with <em>each</em>, with A only with <em>first</em>, the count 2), and a building overflowing from one into the other (<em>point inside</em>: the right one). On the Grand-Place, the workflow of the two examples above (addresses and buildings against the same parcels, a Filter <code>capakey != parcel_capakey</code> after it) gives exactly the numbers measured before writing it: 4,215 and 447; 0 disagreeing, 5 filled; 1,338 and 18. The whole run takes 0.6 s. The parcels are read once, for both nodes, and only their <code>capakey</code> is read: "asks: 1 of 6 columns".</p>
+  <p>The node's "in" counts both its inputs: 5,864 = 4,662 addresses + 1,202 parcels. Its note says how many references it indexed, and the cell's side.</p>
+  <p><strong>Afterwards</strong>, on the same index: <em>within a distance</em> (the addresses less than 50 m from a stop), <em>nearest</em> (the nearest reference and its distance).</p>
+
   <h3>MapWriter: the printer <span class="tag">0.5.0</span></h3>
   <p>An output node that makes a <em>map</em> instead of a layer: the features it receives drawn by render2d into a PNG, an SVG or a PDF (the file's extension says which). Its parameters:</p>
   <div class="scroll"><table>
@@ -504,7 +571,7 @@ class Clipper:
   custom_nodes/     the user's (empty, with a README)
   tests/            pytest: the engine without a window (the window is tried by hand)
   docs/             these notes
-  requirements.txt  setup.bat  run.bat  README.md  LICENSE (AGPL, as render2d and carto2D)</pre>
+  requirements.txt  setup.bat  etl2d.bat  README.md  LICENSE (AGPL, as render2d and carto2D)</pre>
 </section>
 
 <!-- ======================================================================= -->
@@ -512,14 +579,14 @@ class Clipper:
   <h2>13. The steps</h2>
   <ol start="0">
     <li><strong>These notes</strong>, read and corrected.</li>
-    <li><strong>The engine, without a window</strong> ✓ 0.1.0 (16 November): Feature, schemas, the graph from a JSON file, the generators, the registry of nodes; Reader, Directory reader, Attributes, Reprojector, Clipper, Python caller, Writer; <code>python -m etl2d run</code> and <code>nodes</code>; <code>setup.bat</code>, <code>run.bat</code>; 12 tests (pytest) on small files made by the tests: the notes' examples (the 3 columns of §4, the Grand-Place in Lambert 2008, the 200 m pavement cut to 170 m, the two municipalities, the Python caller's error naming its feature, the writer's three modes and its rollback, the fan-out); 41,000 features a second (§3).</li>
+    <li><strong>The engine, without a window</strong> ✓ 0.1.0 (16 November): Feature, schemas, the graph from a JSON file, the generators, the registry of nodes; Reader, Directory reader, Attributes, Reprojector, Clipper, Python caller, Writer; <code>python -m etl2d run</code> and <code>nodes</code>; <code>setup.bat</code>, <code>run.bat</code> (named <code>etl2d.bat</code> since 0.10.1); 12 tests (pytest) on small files made by the tests: the notes' examples (the 3 columns of §4, the Grand-Place in Lambert 2008, the 200 m pavement cut to 170 m, the two municipalities, the Python caller's error naming its feature, the writer's three modes and its rollback, the fan-out); 41,000 features a second (§3).</li>
     <li><strong>The needs come up</strong> ✓ 0.1.3 (16 November, §5): <code>needs()</code>, <code>plan_needs()</code>; the readers ask their sources a box and columns; 5 more tests (the columns through Attributes, the outside that needs everything, the box through the reprojector, the fan-out, the Python caller's reads): 18.</li>
     <li><strong>The window</strong> ✓ 0.2.0 (16 November, §11): imgui-bundle, the node editor, the library, the properties, the log; open, save, run with live counts, stop; one more test (Stop leaves nothing): 19. Copy and paste ✓ 0.2.2 (1 test: 21); a node added by a right click now lands where the click was at any zoom (it did not when zoomed out).</li>
     <li><strong>Looking inside</strong> (§9): kept outputs and the Table ✓ 0.2.1 (16 November; 1 more test: the kept files, the outside that needs everything, the file's "keep", Stop that keeps the previous file: 20); the map drawn by render2d ✓ 0.3.0 (1 test: the map's system and first view of a file, in metres and in degrees: 22).</li>
     <li><strong>Reload</strong> of custom nodes, the run from the middle, the fan-out to a file.</li>
     <li><strong>The switch on attributes</strong> ✓ 0.4.0 (16 November): the Filter (§7; FME's TestFilter): one input, one output per rule, plus <em>else</em>. With it, ports made from the parameters (<code>outputs_for(params)</code>, <code>Graph.rename_output()</code>, <code>prune_ports()</code>), useful to other nodes too. 4 tests (the first rule wins, the comparisons and the errors, the ports that follow the rules, its needs): 27.</li>
     <li><strong>The printer: MapWriter</strong> ✓ 0.5.0, first version (16 November, §7: one layer, an image or a page; 1 test, skipped where render2d is not found: set <code>ETL2D_TEST_RENDER2D</code> to run it: 29). An output node that makes a map instead of a layer: PNG, SVG or PDF by the file's extension, a YSLD style, a basemap, a box and a size (or a scale), later render2d's page (title, legend). The features go to a temporary FlatGeobuf; at the end of the flow, <code>render2d tmp.fgb --style … --bbox … -o map.pdf</code> (the same call as the Map panel of step 4, §9). Its box goes up to the readers (§5); its columns: all at first, later those the YSLD names; a column the style needs and does not receive: red before the run (§4). Then: one map per value of a column (<code>group by: MUNICIPALITY</code>: 19 PDF, the name in the title), and several layers on one map (several inputs: the ports made from the parameters, as the switch).</li>
-    <li><strong>Expressions</strong> ✓ 0.6.0 (§7, 16 November): computed columns in Attributes, <code>= area * 2</code>, with geometry functions (<code>etl2d/expr.py</code>, a parser of our own; 6 tests: 35). 0.7.0: in the Filter (the comparison "expression"); the MapWriter of several layers, each coloured by a column (categorize, graduate) ✓ 0.7.0 (17 November; 2 tests: 37). Then, in order (16 November): geometry validation and repair ✓ 0.9.0 (§7, 17 November: the GeometryValidator; 1 test: 39); the spatial relation (point in polygon, a reference input); dissolve and aggregate (with buffers, convex and concave hulls in a geometry node); change detection; later the skeleton (not in GDAL: PostGIS with SFCGAL, or Voronoi) and topology (lines to polygons).</li>
+    <li><strong>Expressions</strong> ✓ 0.6.0 (§7, 16 November): computed columns in Attributes, <code>= area * 2</code>, with geometry functions (<code>etl2d/expr.py</code>, a parser of our own; 6 tests: 35). 0.7.0: in the Filter (the comparison "expression"); the MapWriter of several layers, each coloured by a column (categorize, graduate) ✓ 0.7.0 (17 November; 2 tests: 37). Then, in order (16 November): geometry validation and repair ✓ 0.9.0 (§7, 17 November: the GeometryValidator; 1 test: 39); the spatial relation ✓ 0.10.0 (§7, 17 November: the SpatialRelator, a reference input; 1 test: 40); dissolve and aggregate (with buffers, convex and concave hulls in a geometry node); change detection; later the skeleton (not in GDAL: PostGIS with SFCGAL, or Voronoi) and topology (lines to polygons).</li>
     <li>Then, as the real workflows ask: PostGIS in and out with its transactions, a join, a filter by expression, a group-by, DuckDB.</li>
   </ol>
 </section>
@@ -540,6 +607,7 @@ class Clipper:
     <tr><td>8</td><td>The window and the engine in one process, the run in a thread; the graph propagated again at every change (16 November, §11).</td><td>The run in another process (as the command line): the window would not see the counts live; propagation on demand only: mistakes seen late.</td></tr>
     <tr><td>9</td><td>A Filter's outputs are named by its rules and follow them (renamed: the links follow; removed: they go, said) (16 November, §7).</td><td>Outputs numbered (out1, out2): a rule moved would send its features elsewhere without a word.</td></tr>
     <tr><td>10</td><td>Several layers on one map: one MapWriter with several inputs, one per layer, each with its style (categorize, graduate), its order of drawing in its Properties as carto2D's Layers panel; the map's settings (file, page, scale, title, basemap) once (16 November, §7).</td><td>Several MapWriters on the same file making one map, as several Writers make one GeoPackage: the map's settings repeated on each, to keep in agreement, and the order of drawing a parameter apart.</td></tr>
+    <tr><td>11</td><td>A spatial relation reads its reference whole into memory, indexed by a grid made in Python (the cell: the extent's side / √n), and streams the features (17 November, §7).</td><td>A library for the index (Shapely's STRtree, rtree): one more dependency for 2 to 6 tests a feature instead of 1,202, the same gain; the reference in a file with its index: slower, kept for references too large for memory.</td></tr>
   </table></div>
 </section>
 
